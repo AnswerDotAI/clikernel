@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clikernel"
+dynamic = ["version"]
+description = "A tiny stdin/stdout IPython worker"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "clikernel contributors" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+
+dependencies = [
+  "execnb",
+]
+
+[project.optional-dependencies]
+dev = [
+  "fastship",
+  "build",
+  "twine",
+  "pytest",
+]
+
+[project.urls]
+Homepage = "https://github.com/AnswerDotAI/clikernel"
+
+[project.scripts]
+clikernel = "clikernel.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "clikernel.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["clikernel"]

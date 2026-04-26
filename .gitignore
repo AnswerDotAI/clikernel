@@ -1,0 +1,13 @@
+meta/
+tags
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+.DS_Store
+.ipynb_checkpoints/
