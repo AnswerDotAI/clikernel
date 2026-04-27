@@ -123,9 +123,9 @@ def test_multiple_outputs_use_xmlish_blocks(kernel):
         "42\n"
         f"{delim}\n")
     body, _ = send(proc, code)
-    assert '<stream name="stdout">\nhello\n</stream>\n' in body
+    assert '<stdout>\nhello\n</stdout>\n' in body
     assert '<display_data mime="text/markdown">\n**shown**\n</display_data>\n' in body
-    assert '<execute_result mime="text/plain">\n42\n</execute_result>\n' in body
+    assert '<execute_result>\n42\n</execute_result>\n' in body
 
 
 def test_runtime_errors_return_error_text_and_fresh_delimiter(kernel):
