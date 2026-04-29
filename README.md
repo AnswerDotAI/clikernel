@@ -28,6 +28,8 @@ Send one line to execute it immediately:
 1+1
 ```
 
+Send `exit()` or `quit()` to receive a final delimiter and stop the worker.
+
 For multiline code, send `--` on its own line, then the code, then the latest ready delimiter exactly:
 
 ```text

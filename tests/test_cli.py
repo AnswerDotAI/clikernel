@@ -136,6 +136,16 @@ def test_runtime_errors_return_error_text_and_fresh_delimiter(kernel):
     assert next_delim != delim
 
 
+@pytest.mark.parametrize("cmd", ["exit()", "quit()"])
+def test_exit_request_returns_final_delimiter_and_stops_process(kernel, cmd):
+    proc, _, _ = kernel
+    body, delim = send(proc, f"{cmd}\n")
+    assert body == ""
+    assert DELIM_RE.fullmatch(delim)
+    proc.wait(timeout=TIMEOUT)
+    assert proc.returncode == 0
+
+
 def test_history_is_disabled(kernel):
     proc, _, _ = kernel
     body, _ = send(proc, "get_ipython().history_manager.enabled\n")

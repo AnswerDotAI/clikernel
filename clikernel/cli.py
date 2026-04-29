@@ -48,9 +48,18 @@ def _execute(shell, code):
     return ("error" if shell.exc else "ok"), render_text(outputs)
 
 
+def _request_exit(shell): shell._clikernel_exit = True
+
+
 def _make_shell():
     from execnb.shell import CaptureShell
-    return CaptureShell(mpl_format=None, history=False)
+    shell = CaptureShell(mpl_format=None, history=False)
+    shell._clikernel_exit = False
+    shell.ask_exit = lambda: _request_exit(shell)
+    return shell
+
+
+def _should_exit(shell): return getattr(shell, "_clikernel_exit", False)
 
 
 def _disable_echo():
@@ -87,6 +96,7 @@ def main():
             except BaseException: outputs = _format_error("internal-error", traceback.format_exc())
             delim = _new_delim()
             _write_response(delim, outputs)
+            if _should_exit(shell): break
     finally: _restore_echo(echo_state)
 
 
