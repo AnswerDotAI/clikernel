@@ -14,7 +14,7 @@ This is especially useful with [pyskills](https://github.com/AnswerDotAI/pyskill
 
 ## Protocol
 
-On startup, `clikernel` prints loading status followed by a fresh ready delimiter:
+On startup, `clikernel` prints loading status followed by a random session delimiter:
 
 ```text
 please wait, loading...
@@ -22,15 +22,17 @@ loading complete. first delimiter:
 --aB3x9
 ```
 
+That delimiter stays the same until the worker exits.
+
 Send one line to execute it immediately:
 
 ```text
 1+1
 ```
 
-Send `exit()` or `quit()` to receive a final delimiter and stop the worker.
+Each complete request is acknowledged with `.` before execution starts. Send `exit()` or `quit()` to receive an acknowledgement, a final delimiter, and stop the worker.
 
-For multiline code, send `--` on its own line, then the code, then the latest ready delimiter exactly:
+For multiline code, send `--` on its own line, then the code, then the session delimiter exactly:
 
 ```text
 --
@@ -41,11 +43,12 @@ f(2)
 --aB3x9
 ```
 
-After execution, `clikernel` prints the rendered output followed by a new ready delimiter:
+After execution, `clikernel` prints the acknowledgement, the rendered output, and the session delimiter:
 
 ```text
+.
 3
---Q7z2M
+--aB3x9
 ```
 
 Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output is printed directly. Multiple outputs use raw XML-ish tags, for example `<stdout>`, `<display_data mime="text/markdown">`, and `<execute_result>`.
@@ -56,7 +59,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 
 `clikernel` is built for a client that reads stdout as tokens. Local echo is disabled when stdin is a TTY. The client already knows the code it sent, so echoing it back only makes the LLM read slow, expensive tokens that add no information.
 
-Each response ends with a delimiter on its own line. The client can read until that line appears instead of parsing prompts or waiting and guessing. The delimiter changes after every request. This matters for multiline input, where the current delimiter is also the block terminator. A random current delimiter is unlikely to appear in generated code, copied logs, examples, or earlier transcript text. Old delimiters stop working as soon as the next response is printed.
+Each complete request prints `.` on its own line before execution starts. That gives the client a cheap early byte to read, which is useful when the request will run for a while. Each response ends with the same delimiter on its own line. The client can read until that line appears instead of parsing prompts or waiting and guessing. The delimiter is random per process, so it is unlikely to appear in generated code, copied logs, examples, or earlier transcript text. Keeping it fixed for the session means a client does not get stuck just because it missed a rotated delimiter.
 
 Startup messages appear before the first delimiter. After that first delimiter, the stream follows the request-response protocol. Outputs are rendered as concise text, using unescaped XML if required when there's multiple outputs.
 
@@ -82,4 +85,3 @@ ship-gh
 ship-pypi
 ship-bump  # dev release always later than prod release
 ```
-

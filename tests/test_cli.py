@@ -73,6 +73,7 @@ def send(proc, text, timeout=TIMEOUT):
     assert proc.stdin is not None
     proc.stdin.write(text.encode("utf-8"))
     proc.stdin.flush()
+    assert _readline(proc, timeout) == ".\n"
     return read_until_ready(proc, timeout)
 
 
@@ -91,12 +92,23 @@ def test_startup_prints_valid_ready_delimiter(kernel):
     assert DELIM_RE.fullmatch(delim)
 
 
-def test_single_line_request_returns_result_and_fresh_delimiter(kernel):
+def test_single_line_request_returns_result_and_same_delimiter(kernel):
     proc, _, delim = kernel
     body, next_delim = send(proc, "1+1\n")
     assert body == "2\n"
     assert DELIM_RE.fullmatch(next_delim)
-    assert next_delim != delim
+    assert next_delim == delim
+
+
+def test_request_ack_is_written_before_result(kernel):
+    proc, _, delim = kernel
+    assert proc.stdin is not None
+    proc.stdin.write(b"1+1\n")
+    proc.stdin.flush()
+    assert _readline(proc, TIMEOUT) == ".\n"
+    body, next_delim = read_until_ready(proc)
+    assert body == "2\n"
+    assert next_delim == delim
 
 
 def test_state_persists_across_requests(kernel):
@@ -128,20 +140,21 @@ def test_multiple_outputs_use_xmlish_blocks(kernel):
     assert '<execute_result>\n42\n</execute_result>\n' in body
 
 
-def test_runtime_errors_return_error_text_and_fresh_delimiter(kernel):
+def test_runtime_errors_return_error_text_and_same_delimiter(kernel):
     proc, _, delim = kernel
     body, next_delim = send(proc, "1/0\n")
     assert "ZeroDivisionError" in body
     assert DELIM_RE.fullmatch(next_delim)
-    assert next_delim != delim
+    assert next_delim == delim
 
 
 @pytest.mark.parametrize("cmd", ["exit()", "quit()"])
 def test_exit_request_returns_final_delimiter_and_stops_process(kernel, cmd):
-    proc, _, _ = kernel
+    proc, _, start_delim = kernel
     body, delim = send(proc, f"{cmd}\n")
     assert body == ""
     assert DELIM_RE.fullmatch(delim)
+    assert delim == start_delim
     proc.wait(timeout=TIMEOUT)
     assert proc.returncode == 0
 

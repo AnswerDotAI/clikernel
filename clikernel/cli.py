@@ -88,13 +88,12 @@ def main():
             if line == _MULTILINE:
                 code, err = _read_block(sys.stdin, delim)
                 if err:
-                    delim = _new_delim()
                     _write_response(delim, _format_error("protocol-error", err))
                     continue
             else: code = line
+            print(".", flush=True)
             try: _, outputs = _execute(shell, code)
             except BaseException: outputs = _format_error("internal-error", traceback.format_exc())
-            delim = _new_delim()
             _write_response(delim, outputs)
             if _should_exit(shell): break
     finally: _restore_echo(echo_state)
