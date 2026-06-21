@@ -1,4 +1,4 @@
-import os,re,select,shutil,subprocess,tempfile,time
+import os,pty,re,select,shutil,subprocess,tempfile,time
 
 import pytest
 
@@ -55,9 +55,30 @@ def start_kernel(tmp_path):
     return proc
 
 
+def start_kernel_pty(tmp_path):
+    cmd = shutil.which("clikernel")
+    assert cmd, "clikernel console script is not on PATH"
+    env = os.environ.copy()
+    state = os.path.join(tempfile.gettempdir(), f"clikernel-{os.getuid()}")
+    env["CLIKERNEL_STATE_DIR"] = str(tmp_path / "state")
+    env.setdefault("IPYTHONDIR", os.path.join(state, "ipython"))
+    env.setdefault("MPLCONFIGDIR", os.path.join(state, "matplotlib"))
+    env.setdefault("MPLBACKEND", "Agg")
+    env["PYTHONUNBUFFERED"] = "1"
+    master, slave = pty.openpty()
+    try: proc = subprocess.Popen([cmd], stdin=slave, stdout=slave, stderr=subprocess.PIPE, env=env, close_fds=True)
+    finally: os.close(slave)
+    proc._pty_master = master
+    proc._pty_buffer = bytearray()
+    return proc
+
+
 def stop_kernel(proc):
     if proc.stdin is not None:
         try: proc.stdin.close()
+        except OSError: pass
+    if hasattr(proc, "_pty_master"):
+        try: os.close(proc._pty_master)
         except OSError: pass
     if proc.poll() is None:
         try: proc.wait(timeout=1)
@@ -75,6 +96,55 @@ def send(proc, text, timeout=TIMEOUT):
     proc.stdin.flush()
     assert _readline(proc, timeout) == ".\n"
     return read_until_ready(proc, timeout)
+
+
+def _read_ptyline(proc, timeout):
+    buf = proc._pty_buffer
+    while b"\n" not in buf:
+        ready, _, _ = select.select([proc._pty_master], [], [], timeout)
+        if not ready: raise AssertionError(f"timed out waiting for clikernel pty output{_failure_detail(proc)}")
+        chunk = os.read(proc._pty_master, 4096)
+        assert chunk, _failure_detail(proc)
+        buf.extend(chunk)
+    line, _, rest = buf.partition(b"\n")
+    proc._pty_buffer = bytearray(rest)
+    return line.decode("utf-8", "replace").rstrip("\r") + "\n"
+
+
+def read_pty_until_ready(proc, timeout=TIMEOUT):
+    lines = []
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: raise AssertionError(f"timed out waiting for ready delimiter{_failure_detail(proc)}")
+        line = _read_ptyline(proc, remaining)
+        s = line.rstrip("\n")
+        if DELIM_RE.fullmatch(s): return "".join(lines), s
+        lines.append(line)
+
+def _read_pty_rawline(proc, timeout):
+    buf = proc._pty_buffer
+    while b"\n" not in buf:
+        ready, _, _ = select.select([proc._pty_master], [], [], timeout)
+        if not ready: raise AssertionError(f"timed out waiting for clikernel pty output{_failure_detail(proc)}")
+        chunk = os.read(proc._pty_master, 4096)
+        assert chunk, _failure_detail(proc)
+        buf.extend(chunk)
+    line, _, rest = buf.partition(b"\n")
+    proc._pty_buffer = bytearray(rest)
+    return bytes(line + b"\n")
+
+
+def read_pty_raw_until_ready(proc, timeout=TIMEOUT):
+    body = bytearray()
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: raise AssertionError(f"timed out waiting for ready delimiter{_failure_detail(proc)}")
+        line = _read_pty_rawline(proc, remaining)
+        s = line.rstrip(b"\r\n").decode("utf-8", "replace")
+        if DELIM_RE.fullmatch(s): return bytes(body), s, line
+        body.extend(line)
 
 
 @pytest.fixture
@@ -98,6 +168,31 @@ def test_single_line_request_returns_result_and_same_delimiter(kernel):
     assert body == "2\n"
     assert DELIM_RE.fullmatch(next_delim)
     assert next_delim == delim
+
+
+def test_tty_input_is_not_echoed_after_startup(tmp_path):
+    proc = start_kernel_pty(tmp_path)
+    try:
+        body, delim = read_pty_until_ready(proc)
+        assert body == "please wait, loading...\nloading complete. first delimiter:\n"
+        os.write(proc._pty_master, b"1+1\n")
+        assert _read_ptyline(proc, TIMEOUT) == ".\n"
+        body, next_delim = read_pty_until_ready(proc)
+        assert body == "2\n"
+        assert next_delim == delim
+    finally: stop_kernel(proc)
+
+def test_tty_output_keeps_newlines_as_lf(tmp_path):
+    proc = start_kernel_pty(tmp_path)
+    try:
+        _, delim = read_pty_until_ready(proc)
+        os.write(proc._pty_master, b"print('hello')\n")
+        body, next_delim, raw_delim = read_pty_raw_until_ready(proc)
+        assert body == b".\nhello\n"
+        assert raw_delim == next_delim.encode() + b"\n"
+        assert b"\r" not in body + raw_delim
+        assert next_delim == delim
+    finally: stop_kernel(proc)
 
 
 def test_request_ack_is_written_before_result(kernel):

@@ -75,10 +75,24 @@ def _disable_echo():
 def _restore_echo(state):
     if state: termios.tcsetattr(state[0], termios.TCSADRAIN, state[1])
 
+def _disable_output_newline_translation():
+    if not sys.__stdout__.isatty(): return None
+    fd = sys.__stdout__.fileno()
+    attrs = termios.tcgetattr(fd)
+    new_attrs = attrs[:]
+    new_attrs[1] &= ~termios.ONLCR
+    termios.tcsetattr(fd, termios.TCSADRAIN, new_attrs)
+    return fd, attrs
+
+
+def _restore_termios(state):
+    if state: termios.tcsetattr(state[0], termios.TCSADRAIN, state[1])
+
 
 def main():
-    echo_state = _disable_echo()
     shell = _make_shell()
+    output_state = _disable_output_newline_translation()
+    echo_state = _disable_echo()
     delim = _new_delim()
     print("loading complete. first delimiter:", flush=True)
     _write_response(delim)
@@ -96,7 +110,9 @@ def main():
             except BaseException: outputs = _format_error("internal-error", traceback.format_exc())
             _write_response(delim, outputs)
             if _should_exit(shell): break
-    finally: _restore_echo(echo_state)
+    finally:
+        _restore_echo(echo_state)
+        _restore_termios(output_state)
 
 
 if __name__ == "__main__": main()
