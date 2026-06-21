@@ -1,5 +1,12 @@
 <!-- do not remove -->
 
+## 0.1.2
+
+### New Features
+
+- Add ONLCR terminal flag control ([#2](https://github.com/AnswerDotAI/clikernel/issues/2))
+
+
 ## 0.1.1
 
 ### New Features
