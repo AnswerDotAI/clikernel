@@ -1,4 +1,3 @@
-print("please wait, loading...", flush=True)
 import os,secrets,string,sys,tempfile,termios,traceback
 from pathlib import Path
 
@@ -14,9 +13,6 @@ def _set_default_dirs():
         path.mkdir(parents=True, exist_ok=True)
         os.environ.setdefault(env, str(path))
     os.environ.setdefault("MPLBACKEND", "Agg")
-
-
-_set_default_dirs()
 
 
 _ALPHANUM = string.ascii_letters + string.digits
@@ -56,6 +52,10 @@ def _make_shell():
     shell = CaptureShell(mpl_format=None, history=False)
     shell._clikernel_exit = False
     shell.ask_exit = lambda: _request_exit(shell)
+    # execnb already captures the exception as a structured error output; suppress
+    # IPython's own traceback print so it isn't duplicated (in colour) via stdout.
+    shell.showtraceback = lambda *a, **k: None
+    shell.showsyntaxerror = lambda *a, **k: None
     return shell
 
 
@@ -90,6 +90,8 @@ def _restore_termios(state):
 
 
 def main():
+    print("please wait, loading...", flush=True)
+    _set_default_dirs()
     shell = _make_shell()
     output_state = _disable_output_newline_translation()
     echo_state = _disable_echo()

@@ -243,6 +243,21 @@ def test_runtime_errors_return_error_text_and_same_delimiter(kernel):
     assert next_delim == delim
 
 
+def test_error_has_no_ansi_and_no_duplicate_traceback(kernel):
+    proc, _, _ = kernel
+    body, _ = send(proc, "1/0\n")
+    assert "\x1b[" not in body                    # no ANSI colour codes
+    assert body.count("ZeroDivisionError") == 1   # single traceback, not duplicated
+    assert "<stdout>" not in body                 # no captured stdout traceback copy
+
+
+def test_error_preserves_real_stdout(kernel):
+    proc, _, delim = kernel
+    body, _ = send(proc, f"--\nprint('before')\n1/0\n{delim}\n")
+    assert "<stdout>\nbefore\n</stdout>" in body   # genuine prints kept
+    assert body.count("ZeroDivisionError") == 1
+
+
 @pytest.mark.parametrize("cmd", ["exit()", "quit()"])
 def test_exit_request_returns_final_delimiter_and_stops_process(kernel, cmd):
     proc, _, start_delim = kernel
