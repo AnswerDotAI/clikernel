@@ -41,8 +41,13 @@ async def test_execute_returns_result(): assert await _drive(["40+2"]) == ["42"]
 
 
 @pytest.mark.anyio
-async def test_state_persists_across_calls():
-    assert (await _drive(["x = 41", "x + 1"]))[1] == "42"
+async def test_execute_supports_top_level_await():
+    r = await _drive(["import asyncio\nawait asyncio.sleep(0)\n42"])
+    assert r == ["42"]
+
+
+@pytest.mark.anyio
+async def test_state_persists_across_calls(): assert (await _drive(["x = 41", "x + 1"]))[1] == "42"
 
 
 @pytest.mark.anyio

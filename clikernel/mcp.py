@@ -1,4 +1,6 @@
 "MCP server exposing a persistent IPython `CaptureShell` as an `execute` tool."
+import asyncio
+
 from clikernel.cli import _set_default_dirs, _make_shell
 
 
@@ -7,18 +9,20 @@ def main():
     from mcp.server.fastmcp import FastMCP
     from fastcore.nbio import render_text
     mcp = FastMCP("clikernel")
-    state = {"shell": _make_shell()}
+    state = {"shell": _make_shell(), "lock": asyncio.Lock()}
 
     @mcp.tool(structured_output=False)
-    def execute(code:str  # IPython-compatible code to run in the persistent session
-                )->str:   # Rendered outputs (stdout, display data, last-expression result, errors)
+    async def execute(code:str  # IPython-compatible code to run in the persistent session
+                     )->str:   # Rendered outputs (stdout, display data, last-expression result, errors)
         "Run `code` in the persistent IPython session, keeping state across calls."
-        return render_text(state["shell"].run(code))
+        async with state["lock"]:
+            outputs = await asyncio.to_thread(state["shell"].run, code)
+            return render_text(outputs)
 
     @mcp.tool(structured_output=False)
-    def restart()->str:
+    async def restart()->str:
         "Discard all session state (imports, variables, monkeypatches) and start a fresh IPython session."
-        state["shell"] = _make_shell()
+        async with state["lock"]: state["shell"] = _make_shell()
         return "restarted"
 
     mcp.run()
