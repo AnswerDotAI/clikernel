@@ -1,4 +1,4 @@
-import os,secrets,string,sys,tempfile,termios,traceback
+import inspect,os,secrets,shlex,string,sys,tempfile,termios,traceback
 from pathlib import Path
 
 def _state_root():
@@ -47,9 +47,25 @@ def _execute(shell, code):
 def _request_exit(shell): shell._clikernel_exit = True
 
 
+def _magic_wrap(fn):
+    "Make a line magic from `fn`: `--name` flags for bool params, `--name value` otherwise, else positional"
+    params = inspect.signature(fn).parameters
+    def magic(line):
+        args,kw = [],{}
+        toks = iter(shlex.split(line))
+        for t in toks:
+            if t.startswith('--'):
+                k = t[2:]
+                kw[k] = True if params[k].annotation in (bool,'bool') else next(toks)
+            else: args.append(t)
+        return fn(*args, **kw)
+    return magic
+
+
 def _make_shell():
     from execnb.shell import CaptureShell
     shell = CaptureShell(mpl_format=None, history=False)
+    for name in ('nbopen','nbrun'): shell.register_magic_function(_magic_wrap(getattr(shell, name)), 'line', name)
     shell._clikernel_exit = False
     shell.ask_exit = lambda: _request_exit(shell)
     # execnb already captures the exception as a structured error output; suppress

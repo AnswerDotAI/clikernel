@@ -72,5 +72,15 @@ async def test_restart_leaves_kernel_usable():
     assert r[2] == "42"
 
 
+@pytest.mark.anyio
+async def test_nb_magics(tmp_path):
+    import json
+    cells = [dict(cell_type="code", id="aaa111", metadata={}, outputs=[], execution_count=None, source="print('one')")]
+    nb = tmp_path/"t.ipynb"
+    nb.write_text(json.dumps(dict(cells=cells, metadata={}, nbformat=4, nbformat_minor=5)))
+    r = await _drive([f"%nbopen {nb}", "%nbrun aaa"])
+    assert "--- aaa111 ---" in r[1] and "one" in r[1]
+
+
 @pytest.fixture
 def anyio_backend(): return "asyncio"

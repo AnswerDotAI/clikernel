@@ -53,6 +53,20 @@ After execution, `clikernel` prints the acknowledgement, the rendered output, an
 
 Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output is printed directly. Multiple outputs use raw XML-ish tags, for example `<stdout>`, `<display_data mime="text/markdown">`, and `<execute_result>`.
 
+## Notebook magics
+
+`clikernel` registers two line magics wrapping `execnb`'s `nbopen`/`nbrun`, for running cells from a notebook by cell id prefix:
+
+```text
+%nbopen foo.ipynb
+%nbrun ab12
+%nbrun ab12 --above
+%nbrun --all --exported
+%nbrun ab12 --fname other.ipynb
+```
+
+`%nbopen` sets the default notebook for later `%nbrun` calls (as does passing `--fname`). `%nbrun` runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells with an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, and each executed cell's rendered output is printed under a `--- {cell id} ---` header.
+
 `clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the first delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
 
 ## Why The Protocol Is Odd

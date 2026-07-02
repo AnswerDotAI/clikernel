@@ -1,4 +1,4 @@
-import os,pty,re,select,shutil,subprocess,tempfile,time
+import json,os,pty,re,select,shutil,subprocess,tempfile,time
 
 import pytest
 
@@ -273,3 +273,37 @@ def test_history_is_disabled(kernel):
     proc, _, _ = kernel
     body, _ = send(proc, "get_ipython().history_manager.enabled\n")
     assert body == "False\n"
+
+
+NB_CELLS = [("aaa111", "x = 41\nprint('one')"),
+            ("bbb222", "#| export\nprint('two', x + 1)"),
+            ("ccc333", "print('three')")]
+
+def make_nb(path):
+    cells = [dict(cell_type="code", id=i, metadata={}, outputs=[], execution_count=None, source=src)
+             for i,src in NB_CELLS]
+    path.write_text(json.dumps(dict(cells=cells, metadata={}, nbformat=4, nbformat_minor=5)))
+    return path
+
+
+def test_nbopen_nbrun_magics(kernel, tmp_path):
+    proc, _, _ = kernel
+    nb = make_nb(tmp_path/"t.ipynb")
+    body, _ = send(proc, f"%nbopen {nb}\n")
+    assert "error" not in body.lower()
+    body, _ = send(proc, "%nbrun aaa\n")
+    assert "--- aaa111 ---" in body
+    assert "one" in body
+    body, _ = send(proc, "%nbrun bbb222 --above\n")
+    assert "one" in body and "two 42" in body
+    body, _ = send(proc, "%nbrun --all --exported\n")
+    assert "two 42" in body and "one" not in body and "three" not in body
+
+
+def test_nbrun_fname_arg_sets_default(kernel, tmp_path):
+    proc, _, _ = kernel
+    nb = make_nb(tmp_path/"t.ipynb")
+    body, _ = send(proc, f"%nbrun aaa --fname {nb}\n")
+    assert "one" in body
+    body, _ = send(proc, "%nbrun ccc\n")
+    assert "three" in body
