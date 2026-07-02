@@ -9,13 +9,13 @@ def main():
     mcp = FastMCP("clikernel")
     state = {"shell": _make_shell()}
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def execute(code:str  # IPython-compatible code to run in the persistent session
                 )->str:   # Rendered outputs (stdout, display data, last-expression result, errors)
         "Run `code` in the persistent IPython session, keeping state across calls."
         return render_text(state["shell"].run(code))
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def restart()->str:
         "Discard all session state (imports, variables, monkeypatches) and start a fresh IPython session."
         state["shell"] = _make_shell()
