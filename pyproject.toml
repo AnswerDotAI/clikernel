@@ -28,6 +28,9 @@ dev = [
   "pytest",
 ]
 
+[project.entry-points.pyskills]
+clikernel = "clikernel.skill"
+
 [project.urls]
 Homepage = "https://github.com/AnswerDotAI/clikernel"
 
