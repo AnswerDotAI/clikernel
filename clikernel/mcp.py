@@ -1,35 +1,92 @@
-"MCP server exposing a persistent IPython `CaptureShell` as an `execute` tool."
-import asyncio
+"MCP server supervising a persistent `clikernel` CLI worker subprocess."
+import asyncio,signal,sys
 
-from clikernel.cli import _set_default_dirs, _make_shell
+_MARKER = "loading complete. first delimiter:"
+_DIED = "NOTE: the kernel process had died; a fresh one was started, and all previous session state (imports, variables, monkeypatches) is gone.\n"
+_MULTILINE = "--"
+
+
+class _Worker:
+    def __init__(self):
+        self.proc,self.delim,self.started,self.busy,self.desynced = None,None,False,False,False
+        self.lock = asyncio.Lock()
+
+    def alive(self): return self.proc is not None and self.proc.returncode is None
+
+    async def start(self):
+        PIPE = asyncio.subprocess.PIPE
+        self.proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "clikernel.cli", limit=2**24, stdin=PIPE, stdout=PIPE)
+        while True:
+            line = (await self.proc.stdout.readline()).decode()
+            if not line: raise RuntimeError("clikernel worker failed to start")
+            if line.rstrip("\n") == _MARKER: break
+        self.delim = (await self.proc.stdout.readline()).decode().rstrip("\n")
+        self.started,self.busy,self.desynced = True,False,False
+
+    async def kill(self):
+        if self.alive():
+            self.proc.kill()
+            await self.proc.wait()
+
+    async def run(self, code):
+        "Send `code`; return `(acked, body)`. `body` None means the worker died; retry is only safe if it never acked."
+        msg = f"{_MULTILINE}\n{code}\n{self.delim}\n" if "\n" in code or code == _MULTILINE else code + "\n"
+        try:
+            self.proc.stdin.write(msg.encode())
+            await self.proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError): return False, None
+        self.busy = True
+        try:
+            if not (await self.proc.stdout.readline()): return False, None  # "." ack
+            lines = []
+            while True:
+                line = (await self.proc.stdout.readline()).decode()
+                if not line: return True, None
+                if line.rstrip("\n") == self.delim: return True, "".join(lines).removesuffix("\n")
+                lines.append(line)
+        except asyncio.CancelledError:
+            self.desynced = True
+            raise
+        finally: self.busy = False
 
 
 def main():
-    _set_default_dirs()
     from mcp.server.fastmcp import FastMCP
-    from fastcore.nbio import render_text
     mcp = FastMCP("clikernel")
-    state = {"shell": _make_shell(), "lock": asyncio.Lock()}
+    w = _Worker()
 
     @mcp.tool(structured_output=False)
     async def execute(code:str  # IPython-compatible code to run in the persistent session
                      )->str:   # Rendered outputs (stdout, display data, last-expression result, errors)
-        "Run `code` in the persistent IPython session, keeping state across calls (imports, variables, monkeypatches, cached objects)."
-        async with state["lock"]:
-            outputs = await asyncio.to_thread(state["shell"].run, code)
-            return render_text(outputs)
+        "Run `code` in the persistent IPython session, keeping state across calls (imports, variables, monkeypatches, cached objects). If the kernel process has died since the last call, a fresh one is started automatically and the response notes that session state was lost."
+        async with w.lock:
+            note = ""
+            if w.desynced: await w.kill()
+            if not w.alive():
+                if w.started: note = _DIED
+                await w.start()
+            acked, body = await w.run(code)
+            if body is None and not acked:  # died before accepting the request: safe to retry on a fresh worker
+                note = _DIED
+                await w.start()
+                acked, body = await w.run(code)
+            if body is None:
+                return note + "<internal-error>\nkernel process died while executing this request; a fresh kernel will be started on the next call, with all session state lost\n</internal-error>"
+            return note + body
 
     @mcp.tool(structured_output=False)
     async def restart()->str:
-        "Discard all session state (imports, variables, monkeypatches, cached objects) and start a fresh IPython shell inside the same server process. Use this for the common case: a bad variable, a half-finished experiment to abandon, or a user-requested clean slate. Note: this does NOT touch `sys.modules` or anything already monkeypatched (e.g. via fastcore's `@patch`) -- those live at the process level, not the shell level, and survive `restart` untouched. If you need a genuinely fresh interpreter (e.g. after reloading a module that other already-imported modules had patched -- symptoms: a stale-class bug where `isinstance`/`is` checks mysteriously fail, or a class is missing a method you know it has), use `exit` instead. After restarting, redo any imports/setup the task still needs."
-        async with state["lock"]: state["shell"] = _make_shell()
+        "Kill the kernel process and start a fresh one: new pid, `sys.modules` genuinely reset, all session state (imports, variables, monkeypatches, cached objects) discarded. Use for a clean slate, after rebuilding a native extension, or after reloading a module that other already-imported modules had patched (symptoms: a stale-class bug where `isinstance`/`is` checks mysteriously fail, or a class is missing a method you know it has). Also works when `execute` is stuck: the stuck call returns an error and the kernel comes back fresh. After restarting, redo any imports/setup the task still needs."
+        await w.kill()
+        async with w.lock: await w.start()
         return "restarted"
 
     @mcp.tool(structured_output=False)
-    async def exit()->str:
-        "Terminate this MCP server process immediately, for when `restart` isn't enough (see its docstring). This call itself will error (\"Connection closed\") since the process dies before it can respond -- that's expected, not a failure. The next `execute` call transparently reconnects to a freshly-spawned process with `sys.modules` genuinely reset (confirmed via a new pid), no manual reconnect needed. After reconnecting, redo any imports/setup the task still needs."
-        import os
-        os._exit(0)
+    async def interrupt()->str:
+        "Interrupt the code the kernel is currently running (SIGINT, i.e. KeyboardInterrupt): the in-flight `execute` call returns with a KeyboardInterrupt traceback, and session state survives. Prefer this over `restart` when a call is merely taking too long. Only meaningful while an `execute` call is running."
+        if not (w.alive() and w.busy): return "nothing is running"
+        w.proc.send_signal(signal.SIGINT)
+        return "interrupt sent; the running `execute` call will return with a KeyboardInterrupt"
 
     mcp.run()
 

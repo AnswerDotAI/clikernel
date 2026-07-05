@@ -1,4 +1,4 @@
-import os,shutil,sys,tempfile
+import asyncio,os,shutil,signal,sys,tempfile
 
 import pytest
 from mcp import ClientSession, StdioServerParameters
@@ -63,6 +63,78 @@ async def test_error_is_clean():
     assert "ZeroDivisionError" in r
     assert "\x1b[" not in r
     assert r.count("ZeroDivisionError") == 1
+
+
+@pytest.mark.anyio
+async def test_tools_are_execute_restart_interrupt():
+    async with stdio_client(_server_params()) as (r,w), ClientSession(r,w) as s:
+        await s.initialize()
+        assert {t.name for t in (await s.list_tools()).tools} == {"execute","restart","interrupt"}
+
+
+@pytest.mark.anyio
+async def test_restart_gives_fresh_process():
+    r = await _drive_ops([("execute","import os; os.getpid()"), ("restart",), ("execute","import os; os.getpid()")])
+    assert r[1] == "restarted"
+    assert r[0] != r[2]
+
+
+@pytest.mark.anyio
+async def test_restart_resets_sys_modules():
+    r = await _drive_ops([("execute","import sys; sys.modules['fakemod'] = sys"), ("restart",),
+                          ("execute","import sys; 'fakemod' in sys.modules")])
+    assert r[2] == "False"
+
+
+@pytest.mark.anyio
+async def test_interrupt_stops_running_code():
+    async with stdio_client(_server_params()) as (r,w), ClientSession(r,w) as s:
+        await s.initialize()
+        await s.call_tool("execute", {"code": "import time"})
+        task = asyncio.create_task(s.call_tool("execute", {"code": "time.sleep(30); 'fin'+'ished'"}))
+        await asyncio.sleep(1)
+        ir = (await s.call_tool("interrupt", {})).content[0].text
+        assert "interrupt" in ir.lower()
+        out = (await task).content[0].text
+        assert "KeyboardInterrupt" in out and "finished" not in out
+        res = await s.call_tool("execute", {"code": "40+2"})
+        assert res.content[0].text == "42"
+
+
+@pytest.mark.anyio
+async def test_interrupt_when_idle():
+    r = await _drive_ops([("execute","1"), ("interrupt",)])
+    assert "nothing" in r[1].lower()
+
+
+@pytest.mark.anyio
+async def test_recovers_from_killed_worker():
+    async with stdio_client(_server_params()) as (r,w), ClientSession(r,w) as s:
+        await s.initialize()
+        pid = int((await s.call_tool("execute", {"code": "import os; os.getpid()"})).content[0].text)
+        os.kill(pid, signal.SIGKILL)
+        res = (await s.call_tool("execute", {"code": "40+2"})).content[0].text
+        assert "42" in res and "state" in res
+
+
+@pytest.mark.anyio
+async def test_exit_code_recovers_with_note():
+    r = await _drive(["exit()", "40+2"])
+    assert "42" in r[1] and "state" in r[1]
+
+
+@pytest.mark.anyio
+async def test_worker_killed_mid_execute_reports_death():
+    async with stdio_client(_server_params()) as (r,w), ClientSession(r,w) as s:
+        await s.initialize()
+        pid = int((await s.call_tool("execute", {"code": "import os; os.getpid()"})).content[0].text)
+        task = asyncio.create_task(s.call_tool("execute", {"code": "import time; time.sleep(30)"}))
+        await asyncio.sleep(1)
+        os.kill(pid, signal.SIGKILL)
+        out = (await task).content[0].text
+        assert "died" in out
+        res = (await s.call_tool("execute", {"code": "40+2"})).content[0].text
+        assert "42" in res
 
 
 @pytest.mark.anyio

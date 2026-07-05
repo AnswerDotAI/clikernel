@@ -13,7 +13,7 @@ There are two ways to drive it, depending on what the host supports:
 
 # MCP tools
 
-`execute`, `restart`, and `exit` are self-documenting -- read each tool's own MCP description rather than looking for docs elsewhere.
+`execute`, `restart`, and `interrupt` are self-documenting -- read each tool's own MCP description rather than looking for docs elsewhere. `restart` gives a genuinely fresh interpreter process (new pid, `sys.modules` reset); `interrupt` stops a too-long-running `execute` while keeping session state.
 
 # CLI protocol
 
@@ -45,7 +45,7 @@ Do not look for an IPython prompt, do not use `%cpaste`, and do not invent your 
 
 Python exceptions render as normal notebook error output. Protocol/worker failures render with readable XML-ish error tags, then the session delimiter.
 
-To end the session, send `exit`. In CLI mode there is no `restart` tool -- starting a fresh process *is* the restart, and gives a genuinely fresh interpreter (the equivalent of the MCP `exit` tool).
+To end the session, send `exit`. In CLI mode there is no `restart` tool -- starting a fresh process *is* the restart, and gives a genuinely fresh interpreter (the equivalent of the MCP `restart` tool).
 
 # Notebook magics
 
@@ -85,7 +85,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
 
 - Like Jupyter, only the *last* expression in a cell is printed/returned. `print(...)` any earlier value you need to see.
 - Don't re-run an `import` you've already run this session -- it's persistent, so it's already done. Use `importlib.reload` if you've changed a module and need the change picked up. If a previously-imported name raises `NameError`, the session restarted -- redo whatever imports/setup the task needs.
-- `importlib.reload`ing a module is not always enough to pick up a change: other already-imported modules that did `from x import *`, or that monkeypatched one of its classes (e.g. via fastcore's `@patch`), hold stale references that a targeted reload won't fix. If you hit a stale-class symptom (a class missing a method you know it has, `isinstance` mysteriously failing), you need a fresh interpreter process: the MCP `exit` tool (see the `restart`/`exit` tool descriptions for which does what), or in CLI mode, exit and start a new process.
+- `importlib.reload`ing a module is not always enough to pick up a change: other already-imported modules that did `from x import *`, or that monkeypatched one of its classes (e.g. via fastcore's `@patch`), hold stale references that a targeted reload won't fix. If you hit a stale-class symptom (a class missing a method you know it has, `isinstance` mysteriously failing), you need a fresh interpreter process: the MCP `restart` tool, or in CLI mode, exit and start a new process.
 - Everything a cell outputs lands in the conversation and stays there. Be surgical: inspect only what's needed, and don't dump large values -- `print(len(v))` first, then decide whether to print in full or filter down.
 - The kernel is scoped to one client session and shared by any subagents within it. If the server restarts or exits, in-memory state is gone -- redo imports and setup.
 

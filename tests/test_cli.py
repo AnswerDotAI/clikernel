@@ -1,4 +1,4 @@
-import json,os,pty,re,select,shutil,subprocess,tempfile,time
+import json,os,pty,re,select,shutil,signal,subprocess,tempfile,time
 
 import pytest
 
@@ -267,6 +267,29 @@ def test_exit_request_returns_final_delimiter_and_stops_process(kernel, cmd):
     assert delim == start_delim
     proc.wait(timeout=TIMEOUT)
     assert proc.returncode == 0
+
+
+def test_idle_sigint_does_not_kill_worker(kernel):
+    proc, _, _ = kernel
+    time.sleep(0.2)
+    proc.send_signal(signal.SIGINT)
+    time.sleep(0.2)
+    assert proc.poll() is None
+    body, _ = send(proc, "1+1\n")
+    assert body == "2\n"
+
+
+def test_sigint_interrupts_running_code(kernel):
+    proc, _, _ = kernel
+    proc.stdin.write(b"import time; time.sleep(30)\n")
+    proc.stdin.flush()
+    assert _readline(proc, TIMEOUT) == ".\n"
+    time.sleep(0.3)
+    proc.send_signal(signal.SIGINT)
+    body, _ = read_until_ready(proc)
+    assert "KeyboardInterrupt" in body
+    body, _ = send(proc, "1+1\n")
+    assert body == "2\n"
 
 
 def test_history_is_disabled(kernel):

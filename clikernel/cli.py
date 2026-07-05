@@ -78,6 +78,14 @@ def _make_shell():
 def _should_exit(shell): return getattr(shell, "_clikernel_exit", False)
 
 
+def _next_line(stdin):
+    "Read one line; when not a TTY, SIGINT while idle means 'interrupt execution', not 'kill the worker', so ignore it"
+    while True:
+        try: return stdin.readline()
+        except KeyboardInterrupt:
+            if stdin.isatty(): raise
+
+
 def _disable_echo():
     if not sys.stdin.isatty(): return None
     fd = sys.stdin.fileno()
@@ -115,7 +123,9 @@ def main():
     print("loading complete. first delimiter:", flush=True)
     _write_response(delim)
     try:
-        for line in sys.stdin:
+        while True:
+            line = _next_line(sys.stdin)
+            if not line: break
             line = line.rstrip("\n")
             if line == _MULTILINE:
                 code, err = _read_block(sys.stdin, delim)
