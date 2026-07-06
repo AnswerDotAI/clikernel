@@ -1,5 +1,13 @@
 <!-- do not remove -->
 
+## 0.1.4
+
+### New Features
+
+- Add cell inspectors, consolidate terminal handling, and harden MCP supervisor with signal guards and error recovery ([#9](https://github.com/AnswerDotAI/clikernel/issues/9))
+- Switch MCP server from in-process shell to supervised subprocess worker, add interrupt tool and idle-SIGINT handling ([#8](https://github.com/AnswerDotAI/clikernel/issues/8))
+
+
 ## 0.1.3
 
 ### New Features
