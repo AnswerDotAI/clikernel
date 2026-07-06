@@ -1,5 +1,6 @@
-import inspect,os,secrets,shlex,string,sys,tempfile,termios,traceback
+import ast,inspect,os,runpy,secrets,shlex,signal,string,sys,tempfile,termios,traceback,tty
 from pathlib import Path
+from fastcore.xdg import xdg_config_home
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()
@@ -38,10 +39,33 @@ def _write_response(delim, body=None):
     print(delim, flush=True)
 
 
-def _execute(shell, code):
+def _load_inspectors():
+    "Cell inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py`: each is called with the cell AST before execution, and may return a note (prepended to the output) or raise (blocking the cell). The file may define `inspect` and/or an `inspectors` list."
+    path = xdg_config_home()/"clikernel"/"inspectors.py"
+    if not path.exists(): return []
+    try: ns = runpy.run_path(str(path))
+    except Exception:
+        print(f"clikernel: failed to load {path}:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+        return []
+    ins = list(ns.get("inspectors", []))
+    if callable(ns.get("inspect")): ins.append(ns["inspect"])
+    return ins
+
+
+def _inspect(shell, inspectors, code):
+    "Run each inspector on the cell's transformed AST; return concatenated notes. An inspector may raise to block the cell."
+    if not inspectors: return ""
+    try: tree = ast.parse(shell.transform_cell(code))
+    except SyntaxError: return ""  # let the cell's own execution report the error
+    return "".join(note for f in inspectors if (note := f(tree)))
+
+
+def _execute(shell, inspectors, code):
     from fastcore.nbio import render_text
+    try: note = _inspect(shell, inspectors, code)
+    except Exception as e: return "blocked", _format_error("blocked", f"{type(e).__name__}: {e}")
     outputs = shell.run(code)
-    return ("error" if shell.exc else "ok"), render_text(outputs)
+    return ("error" if shell.exc else "ok"), note + render_text(outputs)
 
 
 def _request_exit(shell): shell._clikernel_exit = True
@@ -86,25 +110,16 @@ def _next_line(stdin):
             if stdin.isatty(): raise
 
 
-def _disable_echo():
-    if not sys.stdin.isatty(): return None
-    fd = sys.stdin.fileno()
+def _tty_clear(stream, idx, mask, cc=None):
+    "Clear `mask` bits in termios field `idx` when `stream` is a TTY, with optional `cc` char overrides; returns state for `_restore_termios`"
+    if not stream.isatty(): return None
+    fd = stream.fileno()
     attrs = termios.tcgetattr(fd)
     new_attrs = attrs[:]
-    new_attrs[3] &= ~termios.ECHO
-    termios.tcsetattr(fd, termios.TCSADRAIN, new_attrs)
-    return fd, attrs
-
-
-def _restore_echo(state):
-    if state: termios.tcsetattr(state[0], termios.TCSADRAIN, state[1])
-
-def _disable_output_newline_translation():
-    if not sys.__stdout__.isatty(): return None
-    fd = sys.__stdout__.fileno()
-    attrs = termios.tcgetattr(fd)
-    new_attrs = attrs[:]
-    new_attrs[1] &= ~termios.ONLCR
+    new_attrs[idx] &= ~mask
+    if cc:
+        new_attrs[6] = attrs[6][:]
+        for k, v in cc.items(): new_attrs[6][k] = v
     termios.tcsetattr(fd, termios.TCSADRAIN, new_attrs)
     return fd, attrs
 
@@ -114,11 +129,18 @@ def _restore_termios(state):
 
 
 def main():
+    # Establish our own SIGINT disposition rather than inherit the parent's: a supervisor that ignores
+    # SIGINT would otherwise pass SIG_IGN down (inherited across exec), leaving this worker uninterruptible
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     print("please wait, loading...", flush=True)
     _set_default_dirs()
     shell = _make_shell()
-    output_state = _disable_output_newline_translation()
-    echo_state = _disable_echo()
+    inspectors = _load_inspectors()
+    # ONLCR off so protocol output stays bare LF; ECHO off (echoed input corrupts the protocol) and ICANON
+    # off (canonical mode drops bytes past MAX_CANON with BEL spam; VMIN/VTIME make non-canonical reads
+    # return per byte; ISIG stays on so ^C still interrupts)
+    output_state = _tty_clear(sys.__stdout__, tty.OFLAG, termios.ONLCR)
+    echo_state = _tty_clear(sys.stdin, tty.LFLAG, termios.ECHO | termios.ICANON, {termios.VMIN: 1, termios.VTIME: 0})
     delim = _new_delim()
     print("loading complete. first delimiter:", flush=True)
     _write_response(delim)
@@ -134,12 +156,12 @@ def main():
                     continue
             else: code = line
             print(".", flush=True)
-            try: _, outputs = _execute(shell, code)
+            try: _, outputs = _execute(shell, inspectors, code)
             except BaseException: outputs = _format_error("internal-error", traceback.format_exc())
             _write_response(delim, outputs)
             if _should_exit(shell): break
     finally:
-        _restore_echo(echo_state)
+        _restore_termios(echo_state)
         _restore_termios(output_state)
 
 

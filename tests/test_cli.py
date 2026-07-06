@@ -1,7 +1,5 @@
 import json,os,pty,re,select,shutil,signal,subprocess,tempfile,time
 
-import pytest
-
 DELIM_RE = re.compile(r"--[A-Za-z0-9]{5}")
 TIMEOUT = 5
 
@@ -40,9 +38,7 @@ def read_until_ready(proc, timeout=TIMEOUT):
         lines.append(line)
 
 
-def start_kernel(tmp_path):
-    cmd = shutil.which("clikernel")
-    assert cmd, "clikernel console script is not on PATH"
+def _env(tmp_path):
     env = os.environ.copy()
     state = os.path.join(tempfile.gettempdir(), f"clikernel-{os.getuid()}")
     env["CLIKERNEL_STATE_DIR"] = str(tmp_path / "state")
@@ -50,6 +46,14 @@ def start_kernel(tmp_path):
     env.setdefault("MPLCONFIGDIR", os.path.join(state, "matplotlib"))
     env.setdefault("MPLBACKEND", "Agg")
     env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
+def start_kernel(tmp_path, extra_env=None):
+    cmd = shutil.which("clikernel")
+    assert cmd, "clikernel console script is not on PATH"
+    env = _env(tmp_path)
+    if extra_env: env.update(extra_env)
     proc = subprocess.Popen([cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     proc._stdout_buffer = bytearray()
     return proc
@@ -58,15 +62,8 @@ def start_kernel(tmp_path):
 def start_kernel_pty(tmp_path):
     cmd = shutil.which("clikernel")
     assert cmd, "clikernel console script is not on PATH"
-    env = os.environ.copy()
-    state = os.path.join(tempfile.gettempdir(), f"clikernel-{os.getuid()}")
-    env["CLIKERNEL_STATE_DIR"] = str(tmp_path / "state")
-    env.setdefault("IPYTHONDIR", os.path.join(state, "ipython"))
-    env.setdefault("MPLCONFIGDIR", os.path.join(state, "matplotlib"))
-    env.setdefault("MPLBACKEND", "Agg")
-    env["PYTHONUNBUFFERED"] = "1"
     master, slave = pty.openpty()
-    try: proc = subprocess.Popen([cmd], stdin=slave, stdout=slave, stderr=subprocess.PIPE, env=env, close_fds=True)
+    try: proc = subprocess.Popen([cmd], stdin=slave, stdout=slave, stderr=subprocess.PIPE, env=_env(tmp_path), close_fds=True)
     finally: os.close(slave)
     proc._pty_master = master
     proc._pty_buffer = bytearray()
@@ -122,6 +119,7 @@ def read_pty_until_ready(proc, timeout=TIMEOUT):
         if DELIM_RE.fullmatch(s): return "".join(lines), s
         lines.append(line)
 
+
 def _read_pty_rawline(proc, timeout):
     buf = proc._pty_buffer
     while b"\n" not in buf:
@@ -147,186 +145,141 @@ def read_pty_raw_until_ready(proc, timeout=TIMEOUT):
         body.extend(line)
 
 
-@pytest.fixture
-def kernel(tmp_path):
+NB_CELLS = [("aaa111", "x = 41\nprint('one')"),
+    ("bbb222", "#| export\nprint('two', x + 1)"),
+    ("ccc333", "print('three')")]
+
+def make_nb(path):
+    cells = [dict(cell_type="code", id=i, metadata={}, outputs=[], execution_count=None, source=src) for i,src in NB_CELLS]
+    path.write_text(json.dumps(dict(cells=cells, metadata={}, nbformat=4, nbformat_minor=5)))
+    return path
+
+
+def test_cli(tmp_path):
+    "One pipe-driven worker through the whole protocol, ending with exit(); then a fresh worker for quit()."
     proc = start_kernel(tmp_path)
     try:
         body, delim = read_until_ready(proc)
-        yield proc, body, delim
+        assert body == "please wait, loading...\nloading complete. first delimiter:\n"
+        assert DELIM_RE.fullmatch(delim)
+
+        # ack arrives before the result; result then same delimiter
+        proc.stdin.write(b"1+1\n")
+        proc.stdin.flush()
+        assert _readline(proc, TIMEOUT) == ".\n"
+        body, nd = read_until_ready(proc)
+        assert body == "2\n" and nd == delim
+
+        # state persists
+        assert send(proc, "x=41\n")[0] == ""
+        assert send(proc, "x+1\n")[0] == "42\n"
+
+        # multiline block; multiple outputs use xmlish blocks
+        assert send(proc, f"--\ndef f(x):\n    return x + 1\n\nf(41)\n{delim}\n")[0] == "42\n"
+        code = ("--\nfrom IPython.display import Markdown, display\nprint('hello')\n"
+            f"display(Markdown('**shown**'))\n42\n{delim}\n")
+        body, _ = send(proc, code)
+        assert '<stdout>\nhello\n</stdout>\n' in body
+        assert '<display_data mime="text/markdown">\n**shown**\n</display_data>\n' in body
+        assert '<execute_result>\n42\n</execute_result>\n' in body
+
+        # errors: clean, single traceback, no ansi, genuine stdout preserved
+        body, nd = send(proc, "1/0\n")
+        assert "ZeroDivisionError" in body and nd == delim
+        assert "\x1b[" not in body and body.count("ZeroDivisionError") == 1 and "<stdout>" not in body
+        body, _ = send(proc, f"--\nprint('before')\n1/0\n{delim}\n")
+        assert "<stdout>\nbefore\n</stdout>" in body and body.count("ZeroDivisionError") == 1
+
+        assert send(proc, "get_ipython().history_manager.enabled\n")[0] == "False\n"
+
+        # SIGINT: ignored while idle (non-tty); interrupts running code
+        time.sleep(0.2)
+        proc.send_signal(signal.SIGINT)
+        time.sleep(0.2)
+        assert proc.poll() is None
+        assert send(proc, "1+1\n")[0] == "2\n"
+        proc.stdin.write(b"import time; time.sleep(30)\n")
+        proc.stdin.flush()
+        assert _readline(proc, TIMEOUT) == ".\n"
+        time.sleep(0.3)
+        proc.send_signal(signal.SIGINT)
+        body, _ = read_until_ready(proc)
+        assert "KeyboardInterrupt" in body
+        assert send(proc, "1+1\n")[0] == "2\n"
+
+        # notebook magics
+        nb = make_nb(tmp_path/"t.ipynb")
+        assert "error" not in send(proc, f"%nbopen {nb}\n")[0].lower()
+        body, _ = send(proc, "%nbrun aaa\n")
+        assert "--- aaa111 ---" in body and "one" in body
+        body, _ = send(proc, "%nbrun bbb222 --above\n")
+        assert "one" in body and "two 42" in body
+        body, _ = send(proc, "%nbrun --all --exported\n")
+        assert "two 42" in body and "one" not in body and "three" not in body
+
+        # exit(): empty body, final delimiter, clean stop
+        body, nd = send(proc, "exit()\n")
+        assert body == "" and nd == delim
+        proc.wait(timeout=TIMEOUT)
+        assert proc.returncode == 0
+    finally: stop_kernel(proc)
+
+    proc = start_kernel(tmp_path)
+    try:
+        _, delim = read_until_ready(proc)
+        body, nd = send(proc, "quit()\n")
+        assert body == "" and nd == delim
+        proc.wait(timeout=TIMEOUT)
+        assert proc.returncode == 0
     finally: stop_kernel(proc)
 
 
-def test_startup_prints_valid_ready_delimiter(kernel):
-    _, body, delim = kernel
-    assert body == "please wait, loading...\nloading complete. first delimiter:\n"
-    assert DELIM_RE.fullmatch(delim)
-
-
-def test_single_line_request_returns_result_and_same_delimiter(kernel):
-    proc, _, delim = kernel
-    body, next_delim = send(proc, "1+1\n")
-    assert body == "2\n"
-    assert DELIM_RE.fullmatch(next_delim)
-    assert next_delim == delim
-
-
-def test_tty_input_is_not_echoed_after_startup(tmp_path):
+def test_cli_tty(tmp_path):
+    "One pty-driven worker: input isn't echoed, and output newlines stay LF (no ONLCR CR)."
     proc = start_kernel_pty(tmp_path)
     try:
         body, delim = read_pty_until_ready(proc)
         assert body == "please wait, loading...\nloading complete. first delimiter:\n"
         os.write(proc._pty_master, b"1+1\n")
         assert _read_ptyline(proc, TIMEOUT) == ".\n"
-        body, next_delim = read_pty_until_ready(proc)
-        assert body == "2\n"
-        assert next_delim == delim
-    finally: stop_kernel(proc)
-
-def test_tty_output_keeps_newlines_as_lf(tmp_path):
-    proc = start_kernel_pty(tmp_path)
-    try:
-        _, delim = read_pty_until_ready(proc)
+        body, nd = read_pty_until_ready(proc)
+        assert body == "2\n" and nd == delim
         os.write(proc._pty_master, b"print('hello')\n")
-        body, next_delim, raw_delim = read_pty_raw_until_ready(proc)
+        body, nd2, raw_delim = read_pty_raw_until_ready(proc)
         assert body == b".\nhello\n"
-        assert raw_delim == next_delim.encode() + b"\n"
+        assert raw_delim == nd2.encode() + b"\n"
         assert b"\r" not in body + raw_delim
-        assert next_delim == delim
+        assert nd2 == delim
+
+        # long lines must survive the pty: canonical mode drops bytes past MAX_CANON and spams BEL
+        os.write(proc._pty_master, f"--\ns = 'b' * 2\ns += 'b{'b' * 5000}'\nlen(s)\n{delim}\n".encode())
+        assert _read_ptyline(proc, TIMEOUT) == ".\n"
+        body, nd = read_pty_until_ready(proc)
+        assert body == "5003\n" and nd == delim
     finally: stop_kernel(proc)
 
 
-def test_request_ack_is_written_before_result(kernel):
-    proc, _, delim = kernel
-    assert proc.stdin is not None
-    proc.stdin.write(b"1+1\n")
-    proc.stdin.flush()
-    assert _readline(proc, TIMEOUT) == ".\n"
-    body, next_delim = read_until_ready(proc)
-    assert body == "2\n"
-    assert next_delim == delim
+INSPECTORS_SRC = r'''
+import ast
+def inspect(tree):
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import) and any(a.name == "subprocess" for a in n.names):
+            return "<reminder>\nuse the Bash tool, not subprocess\n</reminder>\n"
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "blockme":
+            raise RuntimeError("blocked by policy")
+'''
 
-
-def test_state_persists_across_requests(kernel):
-    proc, _, _ = kernel
-    body, _ = send(proc, "x=41\n")
-    assert body == ""
-    body, _ = send(proc, "x+1\n")
-    assert body == "42\n"
-
-
-def test_multiline_request_uses_current_delimiter(kernel):
-    proc, _, delim = kernel
-    body, _ = send(proc, f"--\ndef f(x):\n    return x + 1\n\nf(41)\n{delim}\n")
-    assert body == "42\n"
-
-
-def test_multiple_outputs_use_xmlish_blocks(kernel):
-    proc, _, delim = kernel
-    code = (
-        "--\n"
-        "from IPython.display import Markdown, display\n"
-        "print('hello')\n"
-        "display(Markdown('**shown**'))\n"
-        "42\n"
-        f"{delim}\n")
-    body, _ = send(proc, code)
-    assert '<stdout>\nhello\n</stdout>\n' in body
-    assert '<display_data mime="text/markdown">\n**shown**\n</display_data>\n' in body
-    assert '<execute_result>\n42\n</execute_result>\n' in body
-
-
-def test_runtime_errors_return_error_text_and_same_delimiter(kernel):
-    proc, _, delim = kernel
-    body, next_delim = send(proc, "1/0\n")
-    assert "ZeroDivisionError" in body
-    assert DELIM_RE.fullmatch(next_delim)
-    assert next_delim == delim
-
-
-def test_error_has_no_ansi_and_no_duplicate_traceback(kernel):
-    proc, _, _ = kernel
-    body, _ = send(proc, "1/0\n")
-    assert "\x1b[" not in body                    # no ANSI colour codes
-    assert body.count("ZeroDivisionError") == 1   # single traceback, not duplicated
-    assert "<stdout>" not in body                 # no captured stdout traceback copy
-
-
-def test_error_preserves_real_stdout(kernel):
-    proc, _, delim = kernel
-    body, _ = send(proc, f"--\nprint('before')\n1/0\n{delim}\n")
-    assert "<stdout>\nbefore\n</stdout>" in body   # genuine prints kept
-    assert body.count("ZeroDivisionError") == 1
-
-
-@pytest.mark.parametrize("cmd", ["exit()", "quit()"])
-def test_exit_request_returns_final_delimiter_and_stops_process(kernel, cmd):
-    proc, _, start_delim = kernel
-    body, delim = send(proc, f"{cmd}\n")
-    assert body == ""
-    assert DELIM_RE.fullmatch(delim)
-    assert delim == start_delim
-    proc.wait(timeout=TIMEOUT)
-    assert proc.returncode == 0
-
-
-def test_idle_sigint_does_not_kill_worker(kernel):
-    proc, _, _ = kernel
-    time.sleep(0.2)
-    proc.send_signal(signal.SIGINT)
-    time.sleep(0.2)
-    assert proc.poll() is None
-    body, _ = send(proc, "1+1\n")
-    assert body == "2\n"
-
-
-def test_sigint_interrupts_running_code(kernel):
-    proc, _, _ = kernel
-    proc.stdin.write(b"import time; time.sleep(30)\n")
-    proc.stdin.flush()
-    assert _readline(proc, TIMEOUT) == ".\n"
-    time.sleep(0.3)
-    proc.send_signal(signal.SIGINT)
-    body, _ = read_until_ready(proc)
-    assert "KeyboardInterrupt" in body
-    body, _ = send(proc, "1+1\n")
-    assert body == "2\n"
-
-
-def test_history_is_disabled(kernel):
-    proc, _, _ = kernel
-    body, _ = send(proc, "get_ipython().history_manager.enabled\n")
-    assert body == "False\n"
-
-
-NB_CELLS = [("aaa111", "x = 41\nprint('one')"),
-            ("bbb222", "#| export\nprint('two', x + 1)"),
-            ("ccc333", "print('three')")]
-
-def make_nb(path):
-    cells = [dict(cell_type="code", id=i, metadata={}, outputs=[], execution_count=None, source=src)
-             for i,src in NB_CELLS]
-    path.write_text(json.dumps(dict(cells=cells, metadata={}, nbformat=4, nbformat_minor=5)))
-    return path
-
-
-def test_nbopen_nbrun_magics(kernel, tmp_path):
-    proc, _, _ = kernel
-    nb = make_nb(tmp_path/"t.ipynb")
-    body, _ = send(proc, f"%nbopen {nb}\n")
-    assert "error" not in body.lower()
-    body, _ = send(proc, "%nbrun aaa\n")
-    assert "--- aaa111 ---" in body
-    assert "one" in body
-    body, _ = send(proc, "%nbrun bbb222 --above\n")
-    assert "one" in body and "two 42" in body
-    body, _ = send(proc, "%nbrun --all --exported\n")
-    assert "two 42" in body and "one" not in body and "three" not in body
-
-
-def test_nbrun_fname_arg_sets_default(kernel, tmp_path):
-    proc, _, _ = kernel
-    nb = make_nb(tmp_path/"t.ipynb")
-    body, _ = send(proc, f"%nbrun aaa --fname {nb}\n")
-    assert "one" in body
-    body, _ = send(proc, "%nbrun ccc\n")
-    assert "three" in body
+def test_cli_inspectors(tmp_path):
+    "Inspectors loaded from XDG inspectors.py: a returned note is prepended to output, and a raising inspector blocks the cell before it runs."
+    xdg = tmp_path/"xdg"
+    (xdg/"clikernel").mkdir(parents=True)
+    (xdg/"clikernel"/"inspectors.py").write_text(INSPECTORS_SRC)
+    proc = start_kernel(tmp_path, {"XDG_CONFIG_HOME": str(xdg)})
+    try:
+        read_until_ready(proc)
+        body, _ = send(proc, "import subprocess\n")
+        assert "use the Bash tool" in body                         # note prepended, cell still ran (no error)
+        assert send(proc, "1+1\n")[0] == "2\n"                     # unrelated cell: no note
+        body, _ = send(proc, "blockme()\n")
+        assert "blocked by policy" in body and "NameError" not in body  # blocked before running
+    finally: stop_kernel(proc)

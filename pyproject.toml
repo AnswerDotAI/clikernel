@@ -16,7 +16,8 @@ classifiers = [
 ]
 
 dependencies = [
-  "execnb>=0.2.3",
+  "execnb>=0.2.4",
+  "fastcore",
   "mcp",
 ]
 

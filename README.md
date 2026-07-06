@@ -69,6 +69,14 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 
 `clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the first delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
 
+## Inspectors
+
+`clikernel` can check each cell before it runs, to warn about or forbid certain code. On startup it loads inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py` (usually `~/.config/clikernel/inspectors.py`). If that file is absent, nothing changes.
+
+Each cell is transformed first (so IPython magics and `!` shell escapes parse), and its AST is passed to every inspector before the cell executes. An inspector returns a string to prepend a note to the cell's output, raises to block the cell (it does not run, and the exception is reported), or returns None to do nothing. Define a function `inspect(tree)` and/or a list `inspectors` of such functions in the file. A broken `inspectors.py` is reported on stderr and skipped, so it cannot stop the kernel starting.
+
+See [`examples/inspectors.py`](examples/inspectors.py) for one that blocks `subprocess`, `os.system`/`os.popen`, and `!` escapes, steering the agent to the permission-checked Bash tool instead.
+
 ## Why The Protocol Is Odd
 
 `clikernel` is built for a client that reads stdout as tokens. Local echo is disabled when stdin is a TTY. The client already knows the code it sent, so echoing it back only makes the LLM read slow, expensive tokens that add no information.
@@ -99,3 +107,4 @@ ship-gh
 ship-pypi
 ship-bump  # dev release always later than prod release
 ```
+
