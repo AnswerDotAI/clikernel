@@ -160,7 +160,9 @@ def test_cli(tmp_path):
     proc = start_kernel(tmp_path)
     try:
         body, delim = read_until_ready(proc)
-        assert body == "please wait, loading...\nloading complete. first delimiter:\n"
+        assert body.startswith("please wait, loading...\n")           # server info announced between the loading lines
+        assert "persistent IPython session" in body
+        assert body.endswith("loading complete. first delimiter:\n")
         assert DELIM_RE.fullmatch(delim)
 
         # ack arrives before the result; result then same delimiter
@@ -239,7 +241,7 @@ def test_cli_tty(tmp_path):
     proc = start_kernel_pty(tmp_path)
     try:
         body, delim = read_pty_until_ready(proc)
-        assert body == "please wait, loading...\nloading complete. first delimiter:\n"
+        assert body.startswith("please wait, loading...\n") and body.endswith("loading complete. first delimiter:\n")
         os.write(proc._pty_master, b"1+1\n")
         assert _read_ptyline(proc, TIMEOUT) == ".\n"
         body, nd = read_pty_until_ready(proc)
@@ -282,4 +284,37 @@ def test_cli_inspectors(tmp_path):
         assert send(proc, "1+1\n")[0] == "2\n"                     # unrelated cell: no note
         body, _ = send(proc, "blockme()\n")
         assert "blocked by policy" in body and "NameError" not in body  # blocked before running
+    finally: stop_kernel(proc)
+
+
+STARTUP_SRC = "from functools import reduce  # SRC-ONLY-TOKEN\nprint('STARTUP-STDOUT-MARKER')\nGREETING = 'hi from startup'\n"
+
+def test_cli_startup(tmp_path):
+    "startup.py from XDG runs in the persistent session (imports/names available to later requests); the banner carries a <startup file=...> element with a <source> child always and an <output> child only when it prints; a broken startup.py is reported but doesn't stop the kernel."
+    xdg = tmp_path/"xdg"
+    (xdg/"clikernel").mkdir(parents=True)
+    sp = xdg/"clikernel"/"startup.py"
+    sp.write_text(STARTUP_SRC)
+    proc = start_kernel(tmp_path, {"XDG_CONFIG_HOME": str(xdg)})
+    try:
+        body, _ = read_until_ready(proc)
+        assert f'<startup file="{sp}">' in body and "</startup>" in body
+        assert "<source>" in body and "SRC-ONLY-TOKEN" in body            # whole source in banner
+        assert "<output>" in body and "STARTUP-STDOUT-MARKER" in body      # stdout child present
+        assert send(proc, "GREETING\n")[0] == "'hi from startup'\n"      # name defined at startup persists
+        assert send(proc, "reduce(lambda a,b:a+b, [1,2,3])\n")[0] == "6\n"  # import from startup persists
+    finally: stop_kernel(proc)
+
+    (xdg/"clikernel"/"startup.py").write_text("SILENT = 1\n")             # imports/defs but prints nothing
+    proc = start_kernel(tmp_path, {"XDG_CONFIG_HOME": str(xdg)})
+    try:
+        body, _ = read_until_ready(proc)
+        assert f'<startup file="{sp}">' in body and "<source>" in body and "<output>" not in body  # source always, output only if printed
+    finally: stop_kernel(proc)
+
+    (xdg/"clikernel"/"startup.py").write_text("raise RuntimeError('boom')\n")
+    proc = start_kernel(tmp_path, {"XDG_CONFIG_HOME": str(xdg)})
+    try:
+        read_until_ready(proc)                                          # broken startup.py doesn't stop the kernel
+        assert send(proc, "1+1\n")[0] == "2\n"
     finally: stop_kernel(proc)

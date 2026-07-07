@@ -1,6 +1,7 @@
 import ast,inspect,os,runpy,secrets,shlex,signal,string,sys,tempfile,termios,traceback,tty
 from pathlib import Path
 from fastcore.xdg import xdg_config_home
+from clikernel import INSTRUCTIONS
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()
@@ -50,6 +51,27 @@ def _load_inspectors():
     ins = list(ns.get("inspectors", []))
     if callable(ns.get("inspect")): ins.append(ns["inspect"])
     return ins
+
+
+def _stream_text(outputs):
+    "Concatenate the stdout stream text from a `shell.run` output list."
+    return "".join("".join(o["text"]) if isinstance(o["text"], list) else o["text"]
+        for o in outputs if o.get("output_type") == "stream" and o.get("name") == "stdout")
+
+
+def _startup_block(shell):
+    "Run `$XDG_CONFIG_HOME/clikernel/startup.py` in the persistent session (so its imports and names are available to later requests), returning a `<startup file=...>` element with a `<source>` child (the file's source) and, when it prints anything, an `<output>` child (its captured stdout); '' when the file is absent. Errors are reported on stderr and don't stop the kernel."
+    path = xdg_config_home()/"clikernel"/"startup.py"
+    if not path.exists(): return ""
+    src = path.read_text()
+    out = _stream_text(shell.run(src))
+    if shell.exc:
+        exc = shell.exc
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        print(f"clikernel: error running {path}:\n{tb}", file=sys.stderr, flush=True)
+    def _child(tag, body): return f'<{tag}>\n{body if body.endswith(chr(10)) else body+chr(10)}</{tag}>'
+    children = _child("source", src) + ("\n" + _child("output", out) if out else "")
+    return f'<startup file="{path}">\n{children}\n</startup>'
 
 
 def _inspect(shell, inspectors, code):
@@ -135,6 +157,7 @@ def main():
     print("please wait, loading...", flush=True)
     _set_default_dirs()
     shell = _make_shell()
+    block = _startup_block(shell)
     inspectors = _load_inspectors()
     # ONLCR off so protocol output stays bare LF; ECHO off (echoed input corrupts the protocol) and ICANON
     # off (canonical mode drops bytes past MAX_CANON with BEL spam; VMIN/VTIME make non-canonical reads
@@ -142,6 +165,9 @@ def main():
     output_state = _tty_clear(sys.__stdout__, tty.OFLAG, termios.ONLCR)
     echo_state = _tty_clear(sys.stdin, tty.LFLAG, termios.ECHO | termios.ICANON, {termios.VMIN: 1, termios.VTIME: 0})
     delim = _new_delim()
+    # Announce the server info (and any startup.py output) between the loading lines; the mcp supervisor
+    # forwards this to its `instructions` field, and a human/CLI client sees it before the delimiter.
+    print(INSTRUCTIONS + ("\n\n" + block if block else ""), flush=True)
     print("loading complete. first delimiter:", flush=True)
     _write_response(delim)
     try:

@@ -69,6 +69,10 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 
 `clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the first delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
 
+## Startup file
+
+On startup, after creating the shell and before the first delimiter, `clikernel` runs `$XDG_CONFIG_HOME/clikernel/startup.py` (usually `~/.config/clikernel/startup.py`) if it exists. It runs in the persistent session, so any imports, variables, and helpers it defines are available to every later request. The loading banner then carries a `<startup file=...>` element with a `<source>` child holding the file's whole source and, when the file prints anything, an `<output>` child holding its captured stdout; the `clikernel-mcp` server forwards this (after its own instructions) as the MCP `instructions` field. A broken `startup.py` is reported on stderr but does not stop the kernel starting.
+
 ## Inspectors
 
 `clikernel` can check each cell before it runs, to warn about or forbid certain code. On startup it loads inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py` (usually `~/.config/clikernel/inspectors.py`). If that file is absent, nothing changes.

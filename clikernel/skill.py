@@ -49,7 +49,7 @@ To end the session, send `exit`. In CLI mode there is no `restart` tool -- start
 
 # Notebook magics
 
-Two line magics run cells from a `.ipynb` file by cell id prefix:
+`execute` runs IPython, not plain Python, so magics work as written. Two line magics run cells from a `.ipynb` file by cell id prefix:
 
     %nbopen foo.ipynb
     %nbrun ab12

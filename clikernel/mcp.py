@@ -9,6 +9,7 @@ _MULTILINE = "--"
 class _Worker:
     def __init__(self):
         self.proc,self.delim,self.started,self.busy,self.desynced = None,None,False,False,False
+        self.startup_info = ""
         self.lock = asyncio.Lock()
 
     def alive(self): return self.proc is not None and self.proc.returncode is None
@@ -16,11 +17,16 @@ class _Worker:
     async def start(self):
         PIPE = asyncio.subprocess.PIPE
         self.proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "clikernel.cli", limit=2**24, stdin=PIPE, stdout=PIPE)
+        banner = []
         while True:
             line = (await self.proc.stdout.readline()).decode()
             if not line: raise RuntimeError("clikernel worker failed to start")
             if line.rstrip("\n") == _MARKER: break
+            banner.append(line)
         self.delim = (await self.proc.stdout.readline()).decode().rstrip("\n")
+        # banner[0] is "please wait, loading..."; the rest is the server info block (INSTRUCTIONS + any
+        # startup.py output), forwarded verbatim to the mcp `instructions` field.
+        self.startup_info = "".join(banner[1:]).strip()
         self.started,self.busy,self.desynced = True,False,False
 
     async def kill(self):
@@ -77,10 +83,19 @@ def _install_signal_guards(w):
 
 
 def main():
-    from mcp.server.fastmcp import FastMCP
-    mcp = FastMCP("clikernel")
     w = _Worker()
     _install_signal_guards(w)
+    asyncio.run(_serve(w))
+
+
+async def _serve(w):
+    from mcp.server.fastmcp import FastMCP
+    # Start the worker before building the server so startup.py output is captured and forwarded as the
+    # `instructions` field. It's read once, at initialize; a later restart won't refresh what the client sees.
+    try: await w.start()
+    except Exception:
+        print("clikernel-mcp: worker failed to start eagerly; retrying on first call\n" + traceback.format_exc(), file=sys.stderr, flush=True)
+    mcp = FastMCP("clikernel", instructions=w.startup_info or None)
 
     @mcp.tool(structured_output=False)
     async def execute(code:str  # IPython-compatible code to run in the persistent session
@@ -123,7 +138,7 @@ def main():
             return "interrupt sent; the running `execute` call will return with a KeyboardInterrupt"
         except Exception: return _errbox()
 
-    mcp.run()
+    await mcp.run_stdio_async()
 
 
 if __name__ == "__main__": main()

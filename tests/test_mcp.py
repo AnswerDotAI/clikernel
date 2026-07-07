@@ -5,11 +5,11 @@ from mcp.client.stdio import stdio_client
 from clikernel.mcp import _Worker, _install_signal_guards, _kill_worker
 
 
-def _server_params():
+def _server_params(**extra_env):
     cmd = shutil.which("clikernel-mcp")
     args = [] if cmd else ["-m", "clikernel.mcp"]
     cmd = cmd or sys.executable
-    env = dict(os.environ, CLIKERNEL_STATE_DIR=tempfile.mkdtemp(prefix="clikernel-mcp-test-"))
+    env = dict(os.environ, CLIKERNEL_STATE_DIR=tempfile.mkdtemp(prefix="clikernel-mcp-test-"), **extra_env)
     return StdioServerParameters(command=cmd, args=args, env=env)
 
 
@@ -18,11 +18,11 @@ async def _text(s, name, **args):
     return res.content[0].text if res.content else ""
 
 
-@pytest.mark.anyio
 async def test_mcp(tmp_path):
     "One server through everything: execute semantics, magics, restart, interrupt, and worker-death recovery."
     async with stdio_client(_server_params()) as (r, w), ClientSession(r, w) as s:
-        await s.initialize()
+        init = await s.initialize()
+        assert "persistent IPython session" in (init.instructions or "")   # server info forwarded to instructions
         assert {t.name for t in (await s.list_tools()).tools} == {"execute", "restart", "interrupt"}
 
         # execute: results, top-level await, state, xmlish outputs, clean errors
@@ -81,7 +81,21 @@ async def test_mcp(tmp_path):
         assert "42" in r_
 
 
-@pytest.mark.anyio
+async def test_mcp_startup_instructions(tmp_path):
+    "A startup.py's captured stdout is forwarded into the mcp `instructions` field as a <startup> block."
+    xdg = tmp_path/"xdg"
+    (xdg/"clikernel").mkdir(parents=True)
+    sp = xdg/"clikernel"/"startup.py"
+    sp.write_text("import os  # SRC-ONLY-TOKEN\nprint('STARTUP-STDOUT-MARKER')\n")
+    async with stdio_client(_server_params(XDG_CONFIG_HOME=str(xdg))) as (r, w), ClientSession(r, w) as s:
+        init = await s.initialize()
+        instr = init.instructions or ""
+        assert "persistent IPython session" in instr
+        assert f'<startup file="{sp}">' in instr and "</startup>" in instr
+        assert "<source>" in instr and "SRC-ONLY-TOKEN" in instr             # source forwarded
+        assert "<output>" in instr and "STARTUP-STDOUT-MARKER" in instr       # stdout forwarded
+
+
 async def test_supervisor_guards(monkeypatch, tmp_path):
     "SIGINT can't fell the supervisor, SIGTERM/SIGHUP get a clean-shutdown handler, and the worker child is reaped so it never outlives us."
     monkeypatch.setenv("CLIKERNEL_STATE_DIR", str(tmp_path))
@@ -100,7 +114,3 @@ async def test_supervisor_guards(monkeypatch, tmp_path):
     finally:
         for s, h in orig.items(): signal.signal(s, h)
         await w.kill()
-
-
-@pytest.fixture
-def anyio_backend(): return "asyncio"
