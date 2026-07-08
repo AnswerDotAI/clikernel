@@ -1,5 +1,13 @@
 <!-- do not remove -->
 
+## 0.1.5
+
+### New Features
+
+- Enable IPython profile loading by default, matching ipykernel behavior ([#11](https://github.com/AnswerDotAI/clikernel/issues/11))
+- Add startup.py support and forward INSTRUCTIONS + startup output as MCP instructions ([#10](https://github.com/AnswerDotAI/clikernel/issues/10))
+
+
 ## 0.1.4
 
 ### New Features
