@@ -53,11 +53,12 @@ To end the session, send `exit`. In CLI mode there is no `restart` tool -- start
 
     %nbopen foo.ipynb
     %nbrun ab12
+    %nbrun ab12 cd34 ef56
     %nbrun ab12 --above
     %nbrun --all --exported
     %nbrun ab12 --fname other.ipynb
 
-`%nbopen` sets the default notebook for later `%nbrun` calls (passing `--fname` does too). `%nbrun` runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state, and `restart` clears the `%nbopen` default.
+`%nbopen` sets the default notebook for later `%nbrun` calls (passing `--fname` does too). `%nbrun` takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state, and `restart` clears the `%nbopen` default.
 
 Prefer these magics over copying cell source into `execute` by hand when working through a notebook -- e.g. after editing a cell, `%nbrun <id>` re-runs it in place, and `%nbrun <id> --above` rebuilds the state it depends on.
 
