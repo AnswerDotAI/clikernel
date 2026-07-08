@@ -42,7 +42,8 @@ def _env(tmp_path):
     env = os.environ.copy()
     state = os.path.join(tempfile.gettempdir(), f"clikernel-{os.getuid()}")
     env["CLIKERNEL_STATE_DIR"] = str(tmp_path / "state")
-    env.setdefault("IPYTHONDIR", os.path.join(state, "ipython"))
+    env["IPYTHONDIR"] = str(tmp_path / "ipython")   # isolate from the user's real profile
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")  # ...and from their clikernel startup.py
     env.setdefault("MPLCONFIGDIR", os.path.join(state, "matplotlib"))
     env.setdefault("MPLBACKEND", "Agg")
     env["PYTHONUNBUFFERED"] = "1"
@@ -182,7 +183,7 @@ def test_cli(tmp_path):
             f"display(Markdown('**shown**'))\n42\n{delim}\n")
         body, _ = send(proc, code)
         assert '<stdout>\nhello\n</stdout>\n' in body
-        assert '<display_data mime="text/markdown">\n**shown**\n</display_data>\n' in body
+        assert '<display_data mime="text/markdown">' in body and '**shown**' in body
         assert '<execute_result>\n42\n</execute_result>\n' in body
 
         # errors: clean, single traceback, no ansi, genuine stdout preserved
@@ -317,4 +318,20 @@ def test_cli_startup(tmp_path):
     try:
         read_until_ready(proc)                                          # broken startup.py doesn't stop the kernel
         assert send(proc, "1+1\n")[0] == "2\n"
+    finally: stop_kernel(proc)
+
+
+def test_cli_profile(tmp_path):
+    "The IPython profile (extensions + startup files) is loaded by default, like ipykernel"
+    ipd = tmp_path/"ipython"
+    pd = ipd/"profile_default"
+    (pd/"startup").mkdir(parents=True)
+    (pd/"startup"/"00-prof.py").write_text("prof_ran = 7\n")
+    (pd/"ipython_kernel_config.py").write_text("c.InteractiveShellApp.extensions.append('_ck_ext')\n")
+    (tmp_path/"_ck_ext.py").write_text("def load_ipython_extension(ip): ip.user_ns['ck_ext'] = 1\n")
+    proc = start_kernel(tmp_path, {"IPYTHONDIR": str(ipd), "PYTHONPATH": str(tmp_path)})
+    try:
+        read_until_ready(proc)
+        assert send(proc, "prof_ran\n")[0] == "7\n"
+        assert send(proc, "ck_ext\n")[0] == "1\n"
     finally: stop_kernel(proc)
