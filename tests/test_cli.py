@@ -4,6 +4,13 @@ DELIM_RE = re.compile(r"--[A-Za-z0-9]{5}")
 TIMEOUT = 5
 
 
+def test_fmt_error():
+    "fmt_error closes the tag on its own line whether or not `text` ends with a newline"
+    from clikernel.base import fmt_error
+    assert fmt_error("error", "boom") == "<error>\nboom\n</error>"
+    assert fmt_error("error", "boom\n") == "<error>\nboom\n</error>"
+
+
 def _failure_detail(proc):
     if proc.stderr is None: return ""
     ready, _, _ = select.select([proc.stderr], [], [], 0)
@@ -270,6 +277,9 @@ def inspect(tree):
             return "<reminder>\nuse the Bash tool, not subprocess\n</reminder>\n"
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "blockme":
             raise RuntimeError("blocked by policy")
+def inspect2(tree, src):
+    if "MARKER2ARG" in src: return "<reminder>\nsaw the source\n</reminder>\n"
+inspectors = [inspect2]
 '''
 
 def test_cli_inspectors(tmp_path):
@@ -285,6 +295,8 @@ def test_cli_inspectors(tmp_path):
         assert send(proc, "1+1\n")[0] == "2\n"                     # unrelated cell: no note
         body, _ = send(proc, "blockme()\n")
         assert "blocked by policy" in body and "NameError" not in body  # blocked before running
+        body, _ = send(proc, "x = 'MARKER2ARG'\n")
+        assert "saw the source" in body                            # two-arg inspectors also receive the raw cell source
     finally: stop_kernel(proc)
 
 

@@ -49,3 +49,6 @@ version = { attr = "clikernel.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["clikernel"]
+
+[tool.setuptools.package-data]
+clikernel = ["dojo_data/proj/*"]

@@ -96,7 +96,7 @@ This kernel environment commonly has `pyskills` installed -- a plugin system for
 
     from pyskills import list_pyskills, doc
     import pyskills.skill
-    print(doc(pyskills.skill))
+    doc(pyskills.skill)
 """
 
 __all__ = []
