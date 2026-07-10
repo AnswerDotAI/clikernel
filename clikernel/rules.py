@@ -20,7 +20,7 @@ class Finding:
 
 
 class Rule:
-    def __init__(self, name, note, fn, block=False, raw=False): store_attr()
+    def __init__(self, name, note, fn, block=False, raw=False, tag='note'): store_attr()
 
 
 def _calls(tree):
@@ -31,11 +31,19 @@ def _calls(tree):
 def _callee(c): return c.func.id if isinstance(c.func, ast.Name) else None
 
 
+_DATA_EXTS = ('.json','.jsonl','.ndjson','.csv','.tsv','.log')
+
+def _is_data(node):
+    "A string constant under `node` names a data file, where line-oriented editing views don't apply"
+    return any(isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.lower().endswith(_DATA_EXTS)
+        for n in ast.walk(node))
+
+
 def _read_file(tree, src, sess):
     for c in _calls(tree):
         if isinstance(c.func, ast.Attribute):
-            if c.func.attr == 'read_text': return True
-            if c.func.attr == 'read' and isinstance(c.func.value, ast.Call) and _callee(c.func.value) == 'open': return True
+            if c.func.attr == 'read_text' and not _is_data(c.func.value): return True
+            if c.func.attr == 'read' and isinstance(c.func.value, ast.Call) and _callee(c.func.value) == 'open' and not _is_data(c.func.value): return True
 
 
 def _big_replace(tree, src, sess):
@@ -65,6 +73,17 @@ def _rawstr(tree, src, sess):
 def _hashcalc(tree, src, sess): return any(_callee(c) in ('lnhash','line_hash') for c in _calls(tree))
 
 
+def _tuple_payload(tree, src, sess):
+    "Constant a/i/c payloads that are long or contain quotes/backslashes belong in a %%exhash cell"
+    for c in _calls(tree):
+        if _callee(c) not in ('exhash','exhash_file','exhash_cell'): continue
+        for n in ast.walk(c):
+            if isinstance(n, ast.Tuple) and len(n.elts) >= 3 \
+               and isinstance(n.elts[1], ast.Constant) and n.elts[1].value in ('a','i','c') \
+               and isinstance(n.elts[2], ast.Constant) and isinstance(n.elts[2].value, str) \
+               and (len(n.elts[2].value) > 20 or any(ch in n.elts[2].value for ch in '\'"\\')): return True
+
+
 def _postproc(tree, src, sess):
     for n in ast.walk(tree):
         if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Call) and _callee(n.value) in _TOOLING \
@@ -80,7 +99,7 @@ def _run_magic(tree, src, sess):
 
 
 _BOOT = {'doc','list_pyskills'}   # live at the package top level, so the bootstrap line imports them piecemeal by design
-_EXEMPT = _BOOT | {'dojo_start','dojo_score','dojo_redo','doced','forget_doced'}   # the prescribed interfaces are called bare by design
+_EXEMPT = _BOOT | {'dojo_start','dojo_score','dojo_redo','doced','forget_doced','forget_dojo'}   # the prescribed interfaces are called bare by design
 
 def _piecemeal(tree, src, sess):
     for n in ast.walk(tree):
@@ -107,10 +126,10 @@ def _nodoc(tree, src, sess):
             if isinstance(g.target, ast.Name) and isinstance(g.iter, (ast.Tuple, ast.List)) \
                and any(_callee(c) == 'doc' and any(isinstance(a, ast.Name) and a.id == g.target.id for a in c.args) for c in _calls(n)):
                 sess.doced.update(ast.unparse(e) for e in g.iter.elts)
-    new = {nm for c in _calls(tree) if (nm := _callee(c)) and nm not in _EXEMPT and nm not in sess.doced
+    new = {nm for c in _calls(tree) if (nm := _callee(c)) and not nm.startswith('_') and nm not in _EXEMPT and nm not in sess.doced
         and callable(sess.ns.get(nm)) and _is_editable(sess.ns[nm])}
     sess.undoced |= new
-    return bool(new)
+    return ', '.join(sorted(new)) if new else None
 
 
 def _shell_escape(tree, src, sess):
@@ -133,10 +152,11 @@ RULES = [
     Rule('cell_str_replace', 'Edit notebook cells with %%exhash <path> <cell_id>.', _cell_str_replace),
     Rule('rawstr', 'Write non-trivial strings as r""" raw strings; %%exhash payloads need no escaping at all.', _rawstr),
     Rule('hashcalc', 'exhash addresses come only from a fresh lnhashview; never compute them.', _hashcalc),
+    Rule('tuple_payload', 'Apply a/i/c payloads with the %%exhash magic: its payload needs no quoting or escaping.', _tuple_payload),
     Rule('postproc', "Show tooling results bare; narrow with the tool's own parameters.", _postproc),
     Rule('run_magic', 'Invoke magics directly with % syntax.', _run_magic, raw=True),
     Rule('piecemeal', 'Load skill modules whole: from <pkg>.skill import *, after doc(<pkg>.skill).', _piecemeal),
-    Rule('nodoc', 'Read doc(<func>) before its first use.', _nodoc),
+    Rule('nodoc', 'Rule violation: `{0}` docs not read before first use. Run `doc({0})` as your next tool call.', _nodoc, tag='warn'),
     Rule('shell_escape', 'Run shell commands with the Bash tool.', _shell_escape, block=True),
     Rule('sys_path', 'Never modify sys.path; stop and ask the user.', _sys_path, block=True)]
 
@@ -158,7 +178,11 @@ def scan(src, sess):
     tsrc = _transform(src)
     try: tree = ast.parse(tsrc)
     except SyntaxError: return []
-    return [Finding(r.name, r.note) for r in RULES if r.fn(tree, src if r.raw else tsrc, sess)]
+    out = []
+    for r in RULES:
+        if (res := r.fn(tree, src if r.raw else tsrc, sess)):
+            out.append(Finding(r.name, r.note.format(res) if isinstance(res, str) else r.note))
+    return out
 
 
 _LIVE = None
@@ -208,7 +232,10 @@ def make_inspector():
         n0 = len(sess.doced)
         fs = scan(src, sess)
         if len(sess.doced) != n0: _save_doced(sess)
+        out = []
         for f in fs:
-            if next(r for r in RULES if r.name == f.rule).block: raise RuntimeError(f'{f.note} (This check is an early version: if the block seems wrong here, stop and tell your user.)')
-        return ''.join(f'<note>\n{f.note} (Early-version check: if this note seems wrong here, stop and tell your user.)\n</note>\n' for f in fs)
+            r = next(r for r in RULES if r.name == f.rule)
+            if r.block: raise RuntimeError(f'{f.note} (This check is an early version: if the block seems wrong here, stop and tell your user.)')
+            out.append(f'<{r.tag}>\n{f.note}\n</{r.tag}>\n')
+        return ''.join(out)
     return _inspect

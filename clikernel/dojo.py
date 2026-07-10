@@ -5,9 +5,31 @@ from pathlib import Path
 from clikernel.cli import _state_root
 from clikernel.rules import live_session, scan, _callee, _calls
 
-__all__ = ['dojo_start','dojo_score','dojo_redo']
+__all__ = ['dojo_start','dojo_score','dojo_redo','forget_dojo']
 
 _RUN = {}
+
+_WEEK = 7*86400
+
+def _version():
+    from clikernel import __version__
+    return __version__
+
+def _complete_file():
+    "Completion record path: a sibling of the swept run root, so the sweep never touches it"
+    d = _state_root()
+    d.mkdir(parents=True, exist_ok=True)
+    return d/'dojo_complete.json'
+
+def _completions():
+    "Completion records {id: {t, v}} from the last week; older entries are pruned"
+    f = _complete_file()
+    recs = json.loads(f.read_text()) if f.exists() else {}
+    return {k: r for k, r in recs.items() if r['t'] > time.time() - _WEEK}
+
+def forget_dojo():
+    "Truncate the dojo completion record (e.g. after a tooling change): every session redoes the round"
+    _complete_file().write_text('{}')
 
 _SQ3 = "'''"   # can't appear literally inside the rf''' below: the same trap kata 3 sets
 _TMPL_PAYLOAD = rf'''def render(name, temp):
@@ -68,7 +90,7 @@ def _card():
     ks = '\n'.join(f"{i}. (par {k['par']}) {k['prompt']}" for i,k in enumerate(KATAS, 1))
     return f"""== clikernel dojo ==
 Work only in: {d}
-Scoring: kernel cell = 1 stroke; Bash tool call = 2; each print() call = +1. The tooling's reprs are designed to be optimally useful read bare, so end each cell with a bare expression and read what comes back. Cells of only doc()/list_pyskills()/imports are free, as are comment-only narration cells.
+Scoring: kernel cell = 1 stroke; Bash tool call = 2; each print() call = +1. The tooling's reprs are designed to be optimally useful read bare, so end each cell with a bare expression and read what comes back. Cells of only doc()/list_pyskills()/imports are free (bare calls, NOT wrapped in print()), as are comment-only narration cells.
 Penalties: +1 per skill module or workspace function used before doc()ing it.
 Par assumes the tooling's best route, shown with each kata at scoring: matching par means you found it.
 Per-kata scoring: start cells with a free '# kata <n>:' narration comment; later cells inherit it, '# kata 1+4:' splits shared work, and the LAST kata mentioned in a tag wins ('# kata 2 done, kata 3 next' tags 3). A %%exhash cell can't start with a comment, so tag it with a narration cell just before.
@@ -99,8 +121,12 @@ def _rm_run(p):
     shutil.rmtree(p, ignore_errors=True)
 
 
-def dojo_start():
-    "Set up a fresh practice run: copy the kata project to a private dir, start tracing, and print the kata card"
+def dojo_start(id=None):
+    "Set up a fresh practice run: copy the kata project to a private dir, start tracing, and print the kata card. Pass a completion `id` from a previous clean round to skip when it's on record (last week, same tooling version)."
+    if id:
+        rec = _completions().get(id)
+        if rec and rec.get('v') == _version(): return print(f"Dojo already complete (id {id}): no tasks.")
+        print(f"id {id!r} not on record: expired, truncated, or the tooling changed since. Run the round.")
     from IPython import get_ipython
     root = _state_root()/'dojo'
     if root.exists():   # sweep runs abandoned by earlier sessions
@@ -141,27 +167,35 @@ def _nprints(src):
 _TAG_RE = re.compile(r'katas?\W{0,3}(\d[\d\s,+&/-]*)', re.I)
 
 def _kata_tag(src):
-    "Kata numbers from a leading `# kata <n>` comment (generous: any separators; invalid numbers ignored; the LAST kata mention on a line wins), or None"
+    "Kata numbers from a leading `# kata <n>` comment: only text before the first ':' counts (so prose after it can't re-tag), the last kata mention within it wins, and invalid numbers are ignored"
     for l in src.splitlines():
         l = l.strip()
         if not l: continue
         if not l.startswith('#'): break
         ks = None
-        for m in _TAG_RE.finditer(l):
+        for m in _TAG_RE.finditer(l.split(':', 1)[0]):
             if (v := [n for n in map(int, re.findall(r'\d+', m.group(1))) if 1 <= n <= len(KATAS)]): ks = v
         if ks: return ks
     return None
 
+def _kata_cells(cells):
+    "Each cell's kata attribution: a tag cell sets it, later cells inherit it"
+    cur, res = None, []
+    for s in cells:
+        if (t := _kata_tag(s)): cur = t
+        res.append(cur)
+    return res
+
 def _attribute(cells, costs):
-    "Split cell strokes across tagged katas (later cells inherit the last tag), returning (any_tags, untagged, per_kata)"
-    tagged, cur, unt, per = False, None, 0.0, [0.0]*len(KATAS)
-    for s, c in zip(cells, costs):
-        if (t := _kata_tag(s)): cur, tagged = t, True
+    "Split cell strokes across tagged katas, returning (any_tags, untagged, per_kata)"
+    tags = _kata_cells(cells)
+    unt, per = 0.0, [0.0]*len(KATAS)
+    for t, c in zip(tags, costs):
         if not c: continue
-        if cur:
-            for n in cur: per[n-1] += c/len(cur)
+        if t:
+            for n in t: per[n-1] += c/len(t)
         else: unt += c
-    return tagged, unt, per
+    return any(t is not None for t in tags), unt, per
 
 
 def dojo_score(bash_calls=0, orient=''):
@@ -169,7 +203,8 @@ def dojo_score(bash_calls=0, orient=''):
     if not _RUN: return print('No active run: dojo_start() first.')
     _RUN['orient'] = orient
     d = _RUN['dir']
-    cells = [json.loads(l)['src'] for l in Path(_RUN['trace']).read_text().splitlines()]
+    tr = Path(_RUN['trace'])
+    cells = [json.loads(l)['src'] for l in tr.read_text().splitlines()] if tr.exists() else []
     costs = [(0 if _is_free(s) else 1) + _nprints(s) for s in cells]
     strokes = sum(costs) + 2*bash_calls
     sess = live_session(ns=_RUN['ip'].user_ns)  # seeded with persisted doc-state, like the live rules
@@ -203,13 +238,24 @@ def dojo_score(bash_calls=0, orient=''):
         _RUN['ip'].events.unregister('pre_run_cell', _RUN['log'])
         _rm_run(d)
         _RUN.clear()
-        print('Clean round. Run dir removed.')
+        cid = uuid.uuid4().hex[:4]
+        recs = _completions(); recs[cid] = dict(t=time.time(), v=_version())
+        _complete_file().write_text(json.dumps(recs))
+        print(f"Clean round. Run dir removed. Completion id: {cid} - keep this id, including through compaction: passing dojo_start({cid!r}) in a future session skips the round.")
     else: print('Fix the misses, then dojo_redo(<kata number>) to reset that kata and try again.')
     print('The dojo is an early version: include in your report anything above that seemed possibly-imperfect (stroke counts, findings, prompts).')
 
 
 def dojo_redo(n):
-    "Reset kata `n`'s files to pristine and clear its findings from the trace-so-far"
+    "Reset kata `n` for a fresh try: pristine files, with its costly cells dropped from the trace so the retry replaces its strokes instead of adding to them"
     k = KATAS[n-1]
     for f in k['files']: shutil.copy(files('clikernel')/'dojo_data'/'proj'/f, _RUN['dir']/f)
-    print(f"kata '{k['name']}' reset. Par {k['par']}: {k['prompt'][:80]}")
+    tr = Path(_RUN['trace'])
+    if tr.exists():
+        cells = [json.loads(l)['src'] for l in tr.read_text().splitlines()]
+        keep = [s for s, t in zip(cells, _kata_cells(cells)) if t != [n] or (_is_free(s) and not _nprints(s))]
+        tr.write_text(''.join(json.dumps({'src': s}) + '\n' for s in keep))
+    shared = [i for i, o in enumerate(KATAS, 1) if o is not k and set(o['files']) & set(k['files'])]
+    if shared: print(f"NB: this also reset files shared with kata {', '.join(map(str, shared))}: reapply those edits before rescoring")
+    p = k['prompt'].splitlines()[0] + (' ...' if '\n' in k['prompt'] else '')
+    print(f"kata '{k['name']}' reset. Par {k['par']}: {p}")

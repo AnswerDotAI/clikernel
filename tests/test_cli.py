@@ -4,6 +4,16 @@ DELIM_RE = re.compile(r"--[A-Za-z0-9]{5}")
 TIMEOUT = 5
 
 
+def test_state_root(tmp_path, monkeypatch):
+    "Persistent by default (completion ids must outlive tmp cleaners); env override wins"
+    from clikernel.cli import _state_root
+    from fastcore.xdg import xdg_state_home
+    monkeypatch.delenv("CLIKERNEL_STATE_DIR", raising=False)
+    assert _state_root() == xdg_state_home()/'clikernel'
+    monkeypatch.setenv("CLIKERNEL_STATE_DIR", str(tmp_path))
+    assert _state_root() == tmp_path
+
+
 def test_fmt_error():
     "fmt_error closes the tag on its own line whether or not `text` ends with a newline"
     from clikernel.base import fmt_error

@@ -1,4 +1,4 @@
-import ast,inspect,os,runpy,shlex,sys,tempfile,traceback
+import ast,inspect,os,runpy,shlex,sys,traceback
 from pathlib import Path
 from fastcore.xdg import xdg_config_home
 from clikernel import INSTRUCTIONS
@@ -6,7 +6,8 @@ from clikernel.base import fmt_error,init_worker,run_startup,serve_stream
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()
-    return Path(tempfile.gettempdir()) / f"clikernel-{os.getuid()}"
+    from fastcore.xdg import xdg_state_home
+    return xdg_state_home()/'clikernel'
 
 
 def _set_default_dirs():

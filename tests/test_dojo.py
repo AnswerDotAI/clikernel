@@ -1,4 +1,4 @@
-import pytest
+import re, pytest
 from clikernel.cli import _stream_text
 import clikernel.dojo as dj
 
@@ -19,6 +19,7 @@ def test_dojo(tmp_path, monkeypatch):
     run("from clikernel.dojo import *")
     card = run("dojo_start()")
     assert "== clikernel dojo ==" in card and "(par 2)" in card and "par 3" not in card and "best route" in card and "print()" in card
+    assert "not wrapped in print" in card.lower()           # free-cell rule says bare doc() calls only
     assert "early version" in card.lower()                  # card asks for imperfection reports
     hostile = dj._TMPL_PAYLOAD                               # kata 3 payload defeats every Python literal form
     assert "'"*3 in hostile and '"'*3 in hostile and '\\' in hostile and '\n' in hostile
@@ -74,6 +75,14 @@ def test_dojo(tmp_path, monkeypatch):
     assert "kata 'notebook edit' (strokes 1, par 2)" in out
     assert "5 untagged" in out                                          # pre-tag strokes surfaced, gently
 
+    out = run("dojo_redo(3)")                               # over-par kata: retry replaces its strokes, not adds
+    assert "verbatim: ..." in out                           # reset banner shows the prompt's whole first line, elision marked
+    out = run(f"dojo_score(bash_calls=1, orient={ans!r})")
+    assert "strokes 10" in out                              # kata 3's three strokes cleared from the ledger
+    assert "kata 'hostile replace' (strokes 0, par 2)" in out
+    out = run("dojo_redo(1)")
+    assert "kata 4" in out                                  # 01_api.ipynb is shared: warn that kata 4's edits were reset too
+
     (d/'core.py').write_text("broken")
     run("dojo_redo(2)")
     assert "units='imperial'" in (d/'core.py').read_text()  # pristine again
@@ -83,3 +92,29 @@ def test_dojo(tmp_path, monkeypatch):
     dj._rm_run(ok_dir)
     assert not ok_dir.exists()
     with pytest.raises(ValueError): dj._rm_run(tmp_path/'elsewhere')   # tampered path: refused
+
+    run("dojo_start()")                                     # fresh round; this test edits its files directly
+    d2 = dj._RUN['dir']
+    core = (d2/'core.py').read_text().replace("'imperial'", "'metric'").replace('load_cfg', 'load_config') \
+        .replace('cfg = dict', 'config = dict').replace('cfg[k', 'config[k').replace('return cfg', 'return config')
+    (d2/'core.py').write_text(core)
+    (d2/'tmpl.py').write_text('"Plain-text rendering for weather summaries."\n\n\n' + dj._TMPL_PAYLOAD)
+    raw = (d2/'01_api.ipynb').read_text().replace('retries the request twice before giving up.',
+        'retries the request twice more before giving up, making 3 attempts in all.')
+    (d2/'01_api.ipynb').write_text(raw)
+    out = run(f"dojo_score(orient={ans!r})")                # zero traced strokes: clean round issues an id
+    assert "Clean round" in out and "Completion id:" in out and "compaction" in out
+    cid = re.search(r"Completion id: ([0-9a-f]{4})", out)[1]
+    out = run(f"dojo_start({cid!r})")
+    assert "already complete" in out and not dj._RUN        # receipt honored: no tasks, no run started
+    run("forget_dojo()")                                    # tooling changed: truncate the record
+    out = run(f"dojo_start({cid!r})")
+    assert "not on record" in out and "== clikernel dojo ==" in out and dj._RUN  # graceful: full round again
+
+
+def test_kata_tag():
+    "Only text before the first ':' is the tag, so prose mentions of other katas can't re-attribute; last mention wins within it."
+    assert dj._kata_tag('# kata 4: reapply fix (shown in kata 1 summary)') == [4]
+    assert dj._kata_tag('# kata 2 done, kata 3 next') == [3]
+    assert dj._kata_tag('# katas 1+4: shared search') == [1, 4]
+    assert dj._kata_tag('# plain narration, no tag') is None

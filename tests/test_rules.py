@@ -9,6 +9,9 @@ def test_rules():
     assert fires("p.read_text()", "read_file")
     assert fires("open(p).read()", "read_file")
     assert not fires("lnhashview_file(p)", "read_file")
+    assert not fires("Path('trace.jsonl').read_text()", "read_file")  # data files: a hashed line view can't help
+    assert not fires("open(d/'rows.csv').read()", "read_file")
+    assert fires("(d/'core.py').read_text()", "read_file")
 
     # big replace_lines payload -> delete + %%exhash a
     big = "x = 1\n" * 9
@@ -40,6 +43,14 @@ def test_rules():
     assert fires("get_ipython().run_line_magic('nbrun', 'abc')", "run_magic")
     assert not fires("%nbrun abc", "run_magic")                  # a real magic is the blessed route
 
+    # tuple a/i/c payloads -> %%exhash magic (short quote-free payloads tolerated)
+    assert fires("exhash_file(p, [(a, 'c', 'a longer replacement line here')])", "tuple_payload")
+    assert fires('exhash_file(p, [(a, "a", "it\'s")])', "tuple_payload")             # quote in payload
+    assert fires("exhash_cell(p, cid, [(a, 'i', 'x = \\\\n')])", "tuple_payload")    # backslash in payload
+    assert not fires("exhash_file(p, [(a, 'c', 'metric')])", "tuple_payload")        # short one-worder: fine
+    assert not fires("exhash_file(p, [(a, 's', 'longer than twenty chars ok')])", "tuple_payload")  # s is not a payload command
+    assert not fires("exhash_file(p, [(a, 'c', body)])", "tuple_payload")            # variables unknowable: stay quiet
+
     # blockers
     assert fires("import subprocess", "shell_escape")
     assert fires("os.system('ls')", "shell_escape")
@@ -65,7 +76,10 @@ def test_session_rules():
     s3 = Session(ns=ns)
     assert not fires("doc(rg)", "nodoc", s3)
     assert not fires("rg('x', '.')", "nodoc", s3)                 # doc'd first: quiet
+    notes = [f.note for f in scan("rg('x', '.')", Session(ns=ns))]
+    assert any('doc(rg)' in n for n in notes)                      # the note names the specific function
     assert not fires("len('abc')", "nodoc", Session(ns=ns))       # stdlib: quiet
+    assert not fires("_helper()", "nodoc", Session(ns={"_helper": rgapi.skill.rg}))  # private names are internals, not curated API
     import clikernel.dojo as dj
     assert not fires("dojo_score()", "nodoc", Session(ns={"dojo_score": dj.dojo_score}))  # the dojo interface is the blessed route
 
@@ -122,3 +136,16 @@ def test_doced_state(tmp_path, monkeypatch):
     cr.forget_doced()
     cr.make_inspector()
     assert not cr._LIVE.doced                       # post-compaction reset: everything needs doc() again
+
+
+def test_note_tag(tmp_path, monkeypatch):
+    "Each rule picks its wrapper tag: nodoc renders as <warn>, others default to <note>."
+    monkeypatch.setenv("CLIKERNEL_STATE_DIR", str(tmp_path))
+    import IPython, rgapi.skill, clikernel.rules as cr
+    class _FakeIp: user_ns = {'rg': rgapi.skill.rg}
+    monkeypatch.setattr(IPython, 'get_ipython', lambda: _FakeIp)
+    insp = cr.make_inspector()
+    out = insp(None, "rg('x', '.')")
+    assert out.startswith('<warn>') and '</warn>' in out and 'doc(rg)' in out
+    out = insp(None, "p.read_text()")
+    assert out.startswith('<note>') and '</note>' in out
