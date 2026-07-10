@@ -33,17 +33,17 @@ def _callee(c): return c.func.id if isinstance(c.func, ast.Name) else None
 
 _DATA_EXTS = ('.json','.jsonl','.ndjson','.csv','.tsv','.log')
 
-def _is_data(node):
-    "A string constant under `node` names a data file, where line-oriented editing views don't apply"
-    return any(isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.lower().endswith(_DATA_EXTS)
-        for n in ast.walk(node))
+def _textpath(node):
+    "A string constant under `node` recognisably names a non-data file: only then is a view-note earned"
+    return any(isinstance(n, ast.Constant) and isinstance(n.value, str) and '.' in n.value
+        and not n.value.lower().endswith(_DATA_EXTS) for n in ast.walk(node))
 
 
 def _read_file(tree, src, sess):
     for c in _calls(tree):
         if isinstance(c.func, ast.Attribute):
-            if c.func.attr == 'read_text' and not _is_data(c.func.value): return True
-            if c.func.attr == 'read' and isinstance(c.func.value, ast.Call) and _callee(c.func.value) == 'open' and not _is_data(c.func.value): return True
+            if c.func.attr == 'read_text' and _textpath(c.func.value): return True
+            if c.func.attr == 'read' and isinstance(c.func.value, ast.Call) and _callee(c.func.value) == 'open' and _textpath(c.func.value): return True
 
 
 def _big_replace(tree, src, sess):
@@ -116,16 +116,21 @@ def _is_editable(o):
     return bool(f) and 'site-packages' not in f and not f.startswith((sys.prefix, sys.base_prefix))
 
 
+def _docnames(s):
+    "Both spellings of a doc'd name, so `doc(mod.func)` also registers the bare name a call site uses"
+    return {s, s.rsplit('.', 1)[-1]}
+
+
 def _nodoc(tree, src, sess):
     for c in _calls(tree):                          # record doc() reads first, so doc-then-call in one cell is quiet
-        if _callee(c) == 'doc': sess.doced.update(ast.unparse(a) for a in c.args)
-        if _callee(c) == 'doced': sess.doced.update(a.value if isinstance(a, ast.Constant) else ast.unparse(a) for a in c.args)
+        if _callee(c) == 'doc': sess.doced.update(x for a in c.args for x in _docnames(ast.unparse(a)))
+        if _callee(c) == 'doced': sess.doced.update(x for a in c.args for x in _docnames(a.value if isinstance(a, ast.Constant) else ast.unparse(a)))
     for n in ast.walk(tree):                        # doc(f) looped over literal names docs each element
         if isinstance(n, (ast.For, ast.ListComp, ast.SetComp, ast.GeneratorExp)):
             g = n if isinstance(n, ast.For) else n.generators[0]
             if isinstance(g.target, ast.Name) and isinstance(g.iter, (ast.Tuple, ast.List)) \
                and any(_callee(c) == 'doc' and any(isinstance(a, ast.Name) and a.id == g.target.id for a in c.args) for c in _calls(n)):
-                sess.doced.update(ast.unparse(e) for e in g.iter.elts)
+                sess.doced.update(x for e in g.iter.elts for x in _docnames(ast.unparse(e)))
     new = {nm for c in _calls(tree) if (nm := _callee(c)) and not nm.startswith('_') and nm not in _EXEMPT and nm not in sess.doced
         and callable(sess.ns.get(nm)) and _is_editable(sess.ns[nm])}
     sess.undoced |= new

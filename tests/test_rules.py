@@ -5,10 +5,13 @@ def fires(src, name, sess=None): return any(f.rule == name for f in scan(src, se
 
 def test_rules():
     "Each rule fires on its anti-pattern and stays quiet on the blessed route."
-    # read_text/open().read -> lnhashview
-    assert fires("p.read_text()", "read_file")
-    assert fires("open(p).read()", "read_file")
+    # read_text/open().read on a recognisable text file -> lnhashview
+    assert fires("Path('core.py').read_text()", "read_file")
+    assert fires("open('notes.txt').read()", "read_file")
     assert not fires("lnhashview_file(p)", "read_file")
+    assert not fires("p.read_text()", "read_file")            # unrecognisable path: variables stay quiet
+    assert not fires("open(p).read()", "read_file")
+    assert not fires("open(p, 'r').read()", "read_file")      # a mode string is not a filename
     assert not fires("Path('trace.jsonl').read_text()", "read_file")  # data files: a hashed line view can't help
     assert not fires("open(d/'rows.csv').read()", "read_file")
     assert fires("(d/'core.py').read_text()", "read_file")
@@ -55,7 +58,7 @@ def test_rules():
     assert fires("import subprocess", "shell_escape")
     assert fires("os.system('ls')", "shell_escape")
     assert fires("!ls", "shell_escape")                          # `!` escapes are seen via the transformed cell
-    assert fires("%nbopen f.ipynb\np.read_text()", "read_file")  # rules still run on cells containing magics
+    assert fires("%nbopen f.ipynb\nPath('f.py').read_text()", "read_file")  # rules still run on cells containing magics
     assert fires("sys.path.insert(0, 'x')", "sys_path")
     assert fires("sys.path.append('x')", "sys_path")
 
@@ -92,10 +95,18 @@ def test_session_rules():
     assert not fires("[doc(f) for f in (rg, fd)]", "nodoc", s6)
     assert not fires("rg('x', '.')", "nodoc", s6)
 
+    # doc(mod.func) registers the bare name the call site uses
+    s10 = Session(ns={"rg": rgapi.skill.rg})
+    assert not fires("doc(rgapi.skill.rg)", "nodoc", s10)
+    assert not fires("rg('x', '.')", "nodoc", s10)
+    s11 = Session(ns={"rg": rgapi.skill.rg, "fd": rgapi.skill.fd})
+    assert not fires("for f in (rgapi.skill.rg, fd): doc(f)", "nodoc", s11)
+    assert not fires("rg('x', '.')\nfd('.')", "nodoc", s11)
+
     # re-nag: findings repeat on every offending cell until the habit is fixed
     s4 = Session()
-    assert fires("p.read_text()", "read_file", s4)
-    assert fires("q.read_text()", "read_file", s4)
+    assert fires("Path('a.py').read_text()", "read_file", s4)
+    assert fires("Path('b.py').read_text()", "read_file", s4)
     s7 = Session(ns=ns)
     assert fires("rg('x', '.')", "nodoc", s7)
     assert fires("rg('y', '.')", "nodoc", s7)                     # keeps nagging until doc'd
@@ -147,5 +158,5 @@ def test_note_tag(tmp_path, monkeypatch):
     insp = cr.make_inspector()
     out = insp(None, "rg('x', '.')")
     assert out.startswith('<warn>') and '</warn>' in out and 'doc(rg)' in out
-    out = insp(None, "p.read_text()")
+    out = insp(None, "Path('a.py').read_text()")
     assert out.startswith('<note>') and '</note>' in out
