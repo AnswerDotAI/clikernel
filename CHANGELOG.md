@@ -1,5 +1,13 @@
 <!-- do not remove -->
 
+## 0.1.6
+
+### New Features
+
+- Add dojo completion tracking with skip-on-replay, kata tag scoping, data-file read exemption, tuple-payload rule, and warn-tagged nodoc findings ([#13](https://github.com/AnswerDotAI/clikernel/issues/13))
+- Add dojo practice system and live best-practice rules; extract kernel-agnostic core into base.py ([#12](https://github.com/AnswerDotAI/clikernel/issues/12))
+
+
 ## 0.1.5
 
 ### New Features
