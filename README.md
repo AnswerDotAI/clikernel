@@ -74,7 +74,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 
 ## Startup file
 
-On startup, after creating the shell and before the session delimiter, `clikernel` runs `$XDG_CONFIG_HOME/clikernel/startup.py` (usually `~/.config/clikernel/startup.py`) if it exists. It runs in the persistent session, so any imports, variables, and helpers it defines are available to every later request. The loading banner then carries a `<startup file=...>` element with a `<source>` child holding the file's whole source and, when the file prints anything, an `<output>` child holding its captured stdout; the `clikernel-mcp` server forwards this (after its own instructions) as the MCP `instructions` field. A broken `startup.py` is reported on stderr but does not stop the kernel starting.
+On startup, after creating the shell and before the session delimiter, `clikernel` runs `$XDG_CONFIG_HOME/clikernel/startup.py` (usually `~/.config/clikernel/startup.py`) if it exists. It runs via IPython's `%run -i`, so `__file__` is the startup path and any imports, variables, and helpers it defines remain available to every later request. The loading banner then carries a `<startup file=...>` element with a `<source>` child holding the file's whole source and, when the file prints anything, an `<output>` child holding its captured stdout; the `clikernel-mcp` server forwards this (after its own instructions) as the MCP `instructions` field. A broken `startup.py` is reported on stderr but does not stop the kernel starting.
 
 ## Inspectors
 
@@ -114,4 +114,3 @@ ship-gh
 ship-pypi
 ship-bump  # dev release always later than prod release
 ```
-

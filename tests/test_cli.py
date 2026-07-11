@@ -322,11 +322,11 @@ def test_cli_inspectors(tmp_path):
     finally: stop_kernel(proc)
 
 
-STARTUP_SRC = "from functools import reduce  # SRC-ONLY-TOKEN\nprint('STARTUP-STDOUT-MARKER')\nGREETING = 'hi from startup'\n"
+STARTUP_SRC = "from functools import reduce  # SRC-ONLY-TOKEN\nprint('STARTUP-STDOUT-MARKER')\nGREETING = 'hi from startup'\nSTARTUP_FILE = __file__\n"
 
 def test_cli_startup(tmp_path):
     "startup.py from XDG runs in the persistent session (imports/names available to later requests); the banner carries a <startup file=...> element with a <source> child always and an <output> child only when it prints; a broken startup.py is reported but doesn't stop the kernel."
-    xdg = tmp_path/"xdg"
+    xdg = tmp_path/"xdg config"
     (xdg/"clikernel").mkdir(parents=True)
     sp = xdg/"clikernel"/"startup.py"
     sp.write_text(STARTUP_SRC)
@@ -338,6 +338,7 @@ def test_cli_startup(tmp_path):
         assert "<output>" in body and "STARTUP-STDOUT-MARKER" in body      # stdout child present
         assert send(proc, "GREETING\n")[0] == "'hi from startup'\n"      # name defined at startup persists
         assert send(proc, "reduce(lambda a,b:a+b, [1,2,3])\n")[0] == "6\n"  # import from startup persists
+        assert send(proc, "STARTUP_FILE\n")[0] == repr(str(sp)) + "\n"  # startup runs as a file, with its path available
     finally: stop_kernel(proc)
 
     (xdg/"clikernel"/"startup.py").write_text("SILENT = 1\n")             # imports/defs but prints nothing

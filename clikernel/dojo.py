@@ -13,7 +13,7 @@ _WEEK = 7*86400
 
 def _version():
     from clikernel import __version__
-    return __version__
+    return f"{__version__}:2"
 
 def _complete_file():
     "Completion record path: a sibling of the swept run root, so the sweep never touches it"
@@ -73,10 +73,10 @@ def _chk_nb(d):
 
 KATAS = [
     dict(name='orient', par=2, files=['01_api.ipynb'], check=_chk_orient, ro=True,
-        route='find_cells/summary_nb for the module story; nbrg for the httpx calls; answer from the bare results',
+        route='find_cells(summary=True)/summary_nb for the module story; nbrg for the httpx calls; answer from the bare results',
         prompt='What does the weather module do, and which notebook cells call httpx? Answer in prose, naming cells by id, and pass it via dojo_score(orient="...").'),
     dict(name='edit set', par=2, files=['core.py'], check=_chk_core,
-        route='lnhashview_file, then ONE exhash_file with all commands, worked bottom-to-top',
+        route='lnhashview_file, then ONE exhash_file with each command tuple as a positional argument, worked bottom-to-top',
         prompt="In core.py: change the default units to 'metric', and rename cfg to config everywhere in code (docstring unchanged)."),
     dict(name='hostile replace', par=2, files=['tmpl.py'], check=_chk_tmpl,
         route='lnhashview_file, then one %%exhash with a range-c address; payload verbatim, no quoting. (% c would replace the whole file: too much here)',
@@ -251,7 +251,8 @@ def dojo_score(bash_calls=0, orient=''):
         _rm_run(d)
         _RUN.clear()
         cid = uuid.uuid4().hex[:4]
-        recs = _completions(); recs[cid] = dict(t=time.time(), v=_version())
+        recs = _completions()
+        recs[cid] = dict(t=time.time(), v=_version())
         _complete_file().write_text(json.dumps(recs))
         print(f"Clean round. Run dir removed. Completion id: {cid} - keep this id, including through compaction: passing dojo_start({cid!r}) in a future session skips the round.")
     else:
