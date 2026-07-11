@@ -45,7 +45,8 @@ def _chk_orient(d):
     out = []
     if not ('meteo' in a.lower() or ('fetch' in a.lower() and 'daily' in a.lower())):
         out.append('answer does not describe fetching daily open-meteo weather: check the notebook, not just core.py')
-    if not ('e31728e2' in a and '4658cca5' in a): out.append('answer does not name the two httpx-calling cells by id')
+    if (missing := [i for i in ('e31728e2','4658cca5') if i not in a]):
+        out.append(f"answer does not name httpx-calling cell(s) {', '.join(missing)} by id")
     return out
 
 def _chk_core(d):
@@ -244,7 +245,7 @@ def dojo_score(bash_calls=0, orient=''):
     if tagged and unt: print(f"{unt:g} untagged strokes: start a cell with '# kata <n>:' to attribute them, or dojo_redo(0) to discard accidental ones")
     elif not tagged: print("For per-kata scoring, start cells with a free '# kata <n>:' narration comment; later cells inherit it, and '# kata 1+4:' splits shared work.")
     if over > 0: print(f"{over} over par for the round: replay with the par routes in mind")
-    print("kata 'orient' expected answer: fetch and summarize daily weather (open-meteo); httpx is called in the fetch_daily export cell e31728e2 and the example cell 4658cca5.")
+    print("kata 'orient' expected answer: fetch and summarize daily weather (open-meteo); httpx is called in the fetch_daily export cell e31728e2 and the example cell 4658cca5 (naming the import cell too is fine).")
     if ok:
         _RUN['ip'].events.unregister('pre_run_cell', _RUN['log'])
         _rm_run(d)

@@ -39,6 +39,7 @@ def test_dojo(tmp_path, monkeypatch):
     assert "kata 'edit set'" in out and "par route" in out  # unedited files: fails, with the route shown
     assert "kata 'orient': no answer passed" in out and dj.KATAS[0]['route'] in out  # ungraded orient fails, route shown
     assert 'expected answer' in out                          # expected answer still printed for calibration
+    assert "import cell too is fine" in out                  # calibration line anticipates being read as a ruling
     assert "early version" in out.lower()                   # scorer asks for imperfection reports
     assert "per-kata scoring" in out                        # no tags yet: gentle how-to nudge, old kata format kept
     assert dj._RUN                                          # not a clean round: run dir kept
@@ -60,6 +61,9 @@ def test_dojo(tmp_path, monkeypatch):
     out = run(f"dojo_score(bash_calls=1, orient={decoy!r})")
     assert "strokes 7 + doc penalties 0" in out and "habit miss" not in out # doc-fix forgiven on rescore
     assert "check the notebook" in out                                      # core.py decoy prose rejected despite ids
+    half = "fetches daily open-meteo weather; httpx called in e31728e2"
+    out = run(f"dojo_score(bash_calls=1, orient={half!r})")
+    assert "does not name httpx-calling cell(s) 4658cca5" in out               # the failure names the missing id
 
     run("dojo_resume()")                                  # counted work resumes
     run("# kata 2: rename sweep")                           # free tag cell sets attribution
