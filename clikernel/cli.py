@@ -38,12 +38,13 @@ def _stream_text(outputs):
 
 def _startup_block(shell):
     "Run `$XDG_CONFIG_HOME/clikernel/startup.py` in the persistent session (so its imports and names are available to later requests), returning its `<startup file=...>` banner element via `run_startup`."
-    def runner(src):
-        out = _stream_text(shell.run(src))
+    path = xdg_config_home()/"clikernel"/"startup.py"
+    def runner(_src):
+        out = _stream_text(shell.run(f"%run -i {shlex.quote(str(path))}"))
         if not shell.exc: return out, None
         exc = shell.exc
         return out, "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    return run_startup(xdg_config_home()/"clikernel"/"startup.py", runner)
+    return run_startup(path, runner)
 
 
 def _call_inspector(f, tree, code):

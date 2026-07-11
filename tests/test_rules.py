@@ -50,12 +50,12 @@ def test_rules():
     assert not fires("%nbrun abc", "run_magic")                  # a real magic is the blessed route
 
     # tuple a/i/c payloads -> %%exhash magic (short quote-free payloads tolerated)
-    assert fires("exhash_file(p, [(a, 'c', 'a longer replacement line here')])", "tuple_payload")
-    assert fires('exhash_file(p, [(a, "a", "it\'s")])', "tuple_payload")             # quote in payload
-    assert fires("exhash_cell(p, cid, [(a, 'i', 'x = \\\\n')])", "tuple_payload")    # backslash in payload
-    assert not fires("exhash_file(p, [(a, 'c', 'metric')])", "tuple_payload")        # short one-worder: fine
-    assert not fires("exhash_file(p, [(a, 's', 'longer than twenty chars ok')])", "tuple_payload")  # s is not a payload command
-    assert not fires("exhash_file(p, [(a, 'c', body)])", "tuple_payload")            # variables unknowable: stay quiet
+    assert fires("exhash_file(p, (a, 'c', 'a longer replacement line here'))", "tuple_payload")
+    assert fires('exhash_file(p, (a, "a", "it\'s"))', "tuple_payload")             # quote in payload
+    assert fires("exhash_cell(p, cid, (a, 'i', 'x = \\\\n'))", "tuple_payload")    # backslash in payload
+    assert not fires("exhash_file(p, (a, 'c', 'metric'))", "tuple_payload")        # short one-worder: fine
+    assert not fires("exhash_file(p, (a, 's', 'longer than twenty chars ok'))", "tuple_payload")  # s is not a payload command
+    assert not fires("exhash_file(p, (a, 'c', body))", "tuple_payload")            # variables unknowable: stay quiet
 
     # blockers
     assert fires("import subprocess", "shell_escape")
