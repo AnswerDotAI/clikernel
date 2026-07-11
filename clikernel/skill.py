@@ -20,10 +20,10 @@ There are two ways to drive it, depending on what the host supports:
 When driven as a plain process, `clikernel` prints loading status followed by a random session delimiter -- always `--` plus 5 alphanumeric characters:
 
     please wait, loading...
-    loading complete. first delimiter:
+    loading complete. session delimiter:
     --aB3x9
 
-Any startup warnings print before the first delimiter. Treat that delimiter as the readiness signal, completion signal, and multiline terminator; it stays the same until the process exits.
+Any startup warnings print before the session delimiter. Treat that delimiter as the readiness signal, completion signal, and multiline terminator; it stays the same until the process exits.
 
 Send a single line to execute a single-line request. `clikernel` first prints an acknowledgement line (`.`) -- that means request *accepted*, not execution complete -- then the response body, then the session delimiter:
 
@@ -32,7 +32,7 @@ Send a single line to execute a single-line request. `clikernel` first prints an
     2
     --aB3x9
 
-Use a bare `--` line to start multiline input, ending the block with the session delimiter exactly:
+Use a bare `--` line to start multiline input -- required for ANY multi-line cell, including `%%` cell magics (sent one-line, a magic gets an empty body) -- ending the block with the session delimiter exactly:
 
     --
     def f(x):

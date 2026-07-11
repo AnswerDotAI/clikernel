@@ -86,7 +86,9 @@ def _magic_wrap(fn):
 
 def _make_shell():
     from execnb.shell import CaptureShell
-    shell = CaptureShell(mpl_format=None, history=False, profile=True)
+    # Named so fastcore's in_notebook/in_jupyter (a class-name check) treat clikernel as a notebook env
+    class CliInteractiveShell(CaptureShell): pass
+    shell = CliInteractiveShell(mpl_format=None, history=False, profile=True)
     for name in ('nbopen','nbrun'): shell.register_magic_function(_magic_wrap(getattr(shell, name)), 'line', name)
     shell._clikernel_exit = False
     shell.ask_exit = lambda: _request_exit(shell)

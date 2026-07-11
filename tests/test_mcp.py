@@ -97,6 +97,7 @@ async def test_mcp_startup_instructions(tmp_path):
         assert f'<startup file="{sp}">' in instr and "</startup>" in instr
         assert "<source>" in instr and "SRC-ONLY-TOKEN" in instr             # source forwarded
         assert "<output>" in instr and "STARTUP-STDOUT-MARKER" in instr       # stdout forwarded
+        assert "<stream-protocol>" not in instr                                  # CLI framing help is CLI-only
 
 
 async def test_mcp_lazy_outside_project(tmp_path):
@@ -141,7 +142,7 @@ def bye(sig, frame):
     sys.exit(0)
 signal.signal(signal.SIGTERM, bye)
 print("please wait, loading...", flush=True)
-print("loading complete. first delimiter:", flush=True)
+print("loading complete. session delimiter:", flush=True)
 print("--test1", flush=True)
 while True: time.sleep(1)
 """

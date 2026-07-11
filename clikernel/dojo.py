@@ -5,7 +5,7 @@ from pathlib import Path
 from clikernel.cli import _state_root
 from clikernel.rules import live_session, scan, _callee, _calls
 
-__all__ = ['dojo_start','dojo_score','dojo_redo','forget_dojo']
+__all__ = ['dojo_start','dojo_score','dojo_redo','dojo_resume','forget_dojo']
 
 _RUN = {}
 
@@ -71,7 +71,7 @@ def _chk_nb(d):
 
 
 KATAS = [
-    dict(name='orient', par=2, files=['01_api.ipynb'], check=_chk_orient,
+    dict(name='orient', par=2, files=['01_api.ipynb'], check=_chk_orient, ro=True,
         route='find_cells/summary_nb for the module story; nbrg for the httpx calls; answer from the bare results',
         prompt='What does the weather module do, and which notebook cells call httpx? Answer in prose, naming cells by id, and pass it via dojo_score(orient="...").'),
     dict(name='edit set', par=2, files=['core.py'], check=_chk_core,
@@ -95,20 +95,21 @@ Penalties: +1 per skill module or workspace function used before doc()ing it.
 Par assumes the tooling's best route, shown with each kata at scoring: matching par means you found it.
 Per-kata scoring: start cells with a free '# kata <n>:' narration comment; later cells inherit it, '# kata 1+4:' splits shared work, and the LAST kata mentioned in a tag wins ('# kata 2 done, kata 3 next' tags 3). A %%exhash cell can't start with a comment, so tag it with a narration cell just before.
 Par for the round: {sum(k['par'] for k in KATAS)}. When done: dojo_score(bash_calls=<your Bash call count>)
+The round is complete ONLY on a clean score: par or better, every kata ok, no penalties. Until then do no work outside the dojo; redo over-par katas with dojo_redo, in ascending order. Scoring pauses the ledger: dojo_redo (or dojo_resume() without a reset) restarts it.
 This dojo is an early version: note anything about the scoring or process that seems possibly-imperfect, and include it in your report.
 
 {ks}"""
 
 
 def _machinery(src):
-    "Pure dojo_score/dojo_redo cells stay out of the trace, so rescoring never grows the ledger"
+    "Pure dojo_score/dojo_redo/dojo_resume cells stay out of the trace, so rescoring never grows the ledger"
     try: tree = ast.parse(src)
     except SyntaxError: return False
     return bool(tree.body) and all(isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
-        and _callee(n.value) in ('dojo_score','dojo_redo') for n in tree.body)
+        and _callee(n.value) in ('dojo_score','dojo_redo','dojo_resume') for n in tree.body)
 
 def _log(info):
-    if _machinery(info.raw_cell): return
+    if _RUN.get('paused') or _machinery(info.raw_cell): return
     with open(_RUN['trace'], 'a') as f: f.write(json.dumps({'src': info.raw_cell}) + '\n')
 
 
@@ -134,6 +135,10 @@ def dojo_start(id=None):
             if old.stat().st_mtime < time.time() - 86400: _rm_run(old)
     d = root/uuid.uuid4().hex[:8]
     shutil.copytree(files('clikernel')/'dojo_data'/'proj', d)
+    if _RUN.get('ip'):   # a prior unfinished round: drop its hook and state so nothing stale leaks in
+        try: _RUN['ip'].events.unregister('pre_run_cell', _RUN['log'])
+        except ValueError: pass
+    _RUN.clear()
     _RUN.update(dir=d, trace=d/'trace.jsonl', ip=get_ipython(), log=_log)
     _RUN['ip'].events.register('pre_run_cell', _RUN['log'])
     print(_card())
@@ -164,6 +169,9 @@ def _nprints(src):
     return sum(1 for c in _calls(tree) if _callee(c) == 'print')
 
 
+def _costly(src): return not _is_free(src) or _nprints(src)
+
+
 _TAG_RE = re.compile(r'katas?\W{0,3}(\d[\d\s,+&/-]*)', re.I)
 
 def _kata_tag(src):
@@ -186,14 +194,15 @@ def _kata_cells(cells):
         res.append(cur)
     return res
 
-def _attribute(cells, costs):
-    "Split cell strokes across tagged katas, returning (any_tags, untagged, per_kata)"
+def _attribute(cells, costs, skips):
+    "Split cell strokes across tagged katas, returning (any_tags, untagged, per_kata). A kata's share of a shared-tag cell is dropped once that kata is reset (its `skips` entry)"
     tags = _kata_cells(cells)
     unt, per = 0.0, [0.0]*len(KATAS)
-    for t, c in zip(tags, costs):
+    for t, c, sk in zip(tags, costs, skips):
         if not c: continue
         if t:
-            for n in t: per[n-1] += c/len(t)
+            for n in t:
+                if n not in sk: per[n-1] += c/len(t)
         else: unt += c
     return any(t is not None for t in tags), unt, per
 
@@ -204,9 +213,11 @@ def dojo_score(bash_calls=0, orient=''):
     _RUN['orient'] = orient
     d = _RUN['dir']
     tr = Path(_RUN['trace'])
-    cells = [json.loads(l)['src'] for l in tr.read_text().splitlines()] if tr.exists() else []
+    entries = [json.loads(l) for l in tr.read_text().splitlines()] if tr.exists() else []
+    cells = [e['src'] for e in entries]
     costs = [(0 if _is_free(s) else 1) + _nprints(s) for s in cells]
-    strokes = sum(costs) + 2*bash_calls
+    tagged, unt, per = _attribute(cells, costs, [set(e.get('skip', ())) for e in entries])
+    strokes = unt + sum(per) + 2*bash_calls
     sess = live_session(ns=_RUN['ip'].user_ns)  # seeded with persisted doc-state, like the live rules
     finds = {}
     for s in cells:
@@ -216,23 +227,23 @@ def dojo_score(bash_calls=0, orient=''):
     if not undoc: finds.pop('nodoc', None)
     par = sum(k['par'] for k in KATAS)
     fails = [(k, k['check'](d)) for k in KATAS]
-    print(f"strokes {strokes} + doc penalties {pen} = {strokes+pen}, par {par}")
+    print(f"strokes {strokes:g} + doc penalties {pen} = {strokes+pen:g}, par {par}")
     for c, s in zip(costs, cells): print(f"  {c}| {(s.splitlines() or [''])[0][:70]}")
     if undoc: print(f"  undoc'd first uses: {', '.join(sorted(undoc))}")
     for name, note in finds.items(): print(f"habit miss [{name}]: {note}")
     over = strokes + pen - par
-    tagged, unt, per = _attribute(cells, costs)
+    ok = not finds and not pen and over <= 0 and not any(p for _, p in fails)   # a clean round is gated on the round total: kata pars are route hints
     overs = []
     for i, (k, (probs, s)) in enumerate(zip(KATAS, zip((p for _, p in fails), per)), 1):
         if tagged and s > k['par']: overs.append(i)
         xtra = f", +{s - k['par']:g} over" if tagged and s > k['par'] else ""
         lbl = f" (strokes {s:g}, par {k['par']}{xtra})" if tagged else ""
         print(f"kata '{k['name']}'{lbl}: {'; '.join(probs) if probs else 'ok'}\n  par route: {k['route']}")
-    if overs: print("over-par katas: " + ', '.join(f"dojo_redo({i}) to reset and retry kata {i}" for i in overs))
-    if tagged and unt: print(f"{unt:g} untagged strokes: start a cell with '# kata <n>:' to attribute them")
+    if overs and not ok: print("over-par katas: " + ', '.join(f"dojo_redo({i}) to reset and retry kata {i}" for i in overs)
+        + (" (redo in ascending order)" if len(overs) > 1 else ""))
+    if tagged and unt: print(f"{unt:g} untagged strokes: start a cell with '# kata <n>:' to attribute them, or dojo_redo(0) to discard accidental ones")
     elif not tagged: print("For per-kata scoring, start cells with a free '# kata <n>:' narration comment; later cells inherit it, and '# kata 1+4:' splits shared work.")
     if over > 0: print(f"{over} over par for the round: replay with the par routes in mind")
-    ok = not finds and not pen and over <= 0 and not any(p for _, p in fails)
     print("kata 'orient' expected answer: fetch and summarize daily weather (open-meteo); httpx is called in the fetch_daily export cell e31728e2 and the example cell 4658cca5.")
     if ok:
         _RUN['ip'].events.unregister('pre_run_cell', _RUN['log'])
@@ -242,20 +253,38 @@ def dojo_score(bash_calls=0, orient=''):
         recs = _completions(); recs[cid] = dict(t=time.time(), v=_version())
         _complete_file().write_text(json.dumps(recs))
         print(f"Clean round. Run dir removed. Completion id: {cid} - keep this id, including through compaction: passing dojo_start({cid!r}) in a future session skips the round.")
-    else: print('Fix the misses, then dojo_redo(<kata number>) to reset that kata and try again.')
+    else:
+        _RUN['paused'] = True
+        print('Fix the misses, then dojo_redo(<kata number>) to reset that kata and try again (ascending order when several). Ledger paused: dojo_redo or dojo_resume() restarts it; the round completes only on a clean score.')
     print('The dojo is an early version: include in your report anything above that seemed possibly-imperfect (stroke counts, findings, prompts).')
 
 
 def dojo_redo(n):
-    "Reset kata `n` for a fresh try: pristine files, with its costly cells dropped from the trace so the retry replaces its strokes instead of adding to them"
-    k = KATAS[n-1]
-    for f in k['files']: shutil.copy(files('clikernel')/'dojo_data'/'proj'/f, _RUN['dir']/f)
+    "Reset kata `n` for a fresh try: pristine files (unless the kata is read-only), its costly cells dropped from the trace, and its share of shared-tag cells forgotten, so the retry replaces its strokes instead of adding to them. Resumes a paused ledger. dojo_redo(0) resets no kata: it discards accidental untagged strokes."
+    k = KATAS[n-1] if n else None
+    if k and not k.get('ro'):
+        for f in k['files']: shutil.copy(files('clikernel')/'dojo_data'/'proj'/f, _RUN['dir']/f)
+    _RUN['paused'] = False
     tr = Path(_RUN['trace'])
     if tr.exists():
-        cells = [json.loads(l)['src'] for l in tr.read_text().splitlines()]
-        keep = [s for s, t in zip(cells, _kata_cells(cells)) if t != [n] or (_is_free(s) and not _nprints(s))]
-        tr.write_text(''.join(json.dumps({'src': s}) + '\n' for s in keep))
-    shared = [i for i, o in enumerate(KATAS, 1) if o is not k and set(o['files']) & set(k['files'])]
-    if shared: print(f"NB: this also reset files shared with kata {', '.join(map(str, shared))}: reapply those edits before rescoring")
+        entries = [json.loads(l) for l in tr.read_text().splitlines()]
+        keep = []
+        for e, t in zip(entries, _kata_cells([e['src'] for e in entries])):
+            if not n and not t and _costly(e['src']): continue
+            if n and t and n in t:
+                if t == [n] and _costly(e['src']): continue
+                if len(t) > 1: e['skip'] = sorted({*e.get('skip', ()), n})
+            keep.append(e)
+        tr.write_text(''.join(json.dumps(e) + '\n' for e in keep))
+    if not k: return print('Untagged strokes discarded; ledger resumed.')
+    if not k.get('ro'):
+        shared = [i for i, o in enumerate(KATAS, 1) if o is not k and not o.get('ro') and set(o['files']) & set(k['files'])]
+        if shared: print(f"NB: this also reset files shared with kata {', '.join(map(str, shared))}: reapply those edits now, in cells tagged '# kata {n}:' so the reapply cost lands on this retry")
     p = k['prompt'].splitlines()[0] + (' ...' if '\n' in k['prompt'] else '')
     print(f"kata '{k['name']}' reset. Par {k['par']}: {p}")
+
+def dojo_resume():
+    "Resume stroke counting after a mid-round dojo_score, without resetting any kata"
+    if not _RUN: return print('No active run: dojo_start() first.')
+    _RUN['paused'] = False
+    print('Ledger resumed: counted work continues.')

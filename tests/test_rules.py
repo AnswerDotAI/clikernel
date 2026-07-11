@@ -15,6 +15,9 @@ def test_rules():
     assert not fires("Path('trace.jsonl').read_text()", "read_file")  # data files: a hashed line view can't help
     assert not fires("open(d/'rows.csv').read()", "read_file")
     assert fires("(d/'core.py').read_text()", "read_file")
+    assert fires("print(Path('a.py').read_text())", "read_file")                  # printed is displayed
+    assert not fires("yaml.safe_load(Path('wf.yaml').read_text())", "read_file")  # parser-bound: never enters context
+    assert not fires("src = Path('a.py').read_text()", "read_file")               # assigned: consumption unknown, stay quiet
 
     # big replace_lines payload -> delete + %%exhash a
     big = "x = 1\n" * 9
@@ -83,6 +86,8 @@ def test_session_rules():
     assert any('doc(rg)' in n for n in notes)                      # the note names the specific function
     assert not fires("len('abc')", "nodoc", Session(ns=ns))       # stdlib: quiet
     assert not fires("_helper()", "nodoc", Session(ns={"_helper": rgapi.skill.rg}))  # private names are internals, not curated API
+    import fastcore.basics
+    assert not fires("store_attr()", "nodoc", Session(ns={"store_attr": fastcore.basics.store_attr}))  # fastcore is ambient vocabulary, not tooling
     import clikernel.dojo as dj
     assert not fires("dojo_score()", "nodoc", Session(ns={"dojo_score": dj.dojo_score}))  # the dojo interface is the blessed route
 

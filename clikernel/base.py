@@ -1,9 +1,9 @@
 "Kernel-agnostic core of clikernel: the stdin/stdout stream protocol, and the MCP supervisor for any worker speaking it."
-import asyncio,atexit,os,secrets,signal,string,sys,termios,time,traceback,tty
+import asyncio,atexit,os,re,secrets,signal,string,sys,termios,time,traceback,tty
 
 _ALPHANUM = string.ascii_letters + string.digits
 _MULTILINE = "--"
-_MARKER = "loading complete. first delimiter:"
+_MARKER = "loading complete. session delimiter:"
 
 
 def _new_delim(): return "--" + ''.join(secrets.choice(_ALPHANUM) for _ in range(5))
@@ -87,6 +87,9 @@ def serve_stream(
     echo_state = _tty_clear(sys.stdin, tty.LFLAG, termios.ECHO | termios.ICANON, {termios.VMIN: 1, termios.VTIME: 0})
     delim = _new_delim()
     print(info, flush=True)
+    print(f"<stream-protocol>\nOne-line request: send the line; every response ends with the session delimiter line.\n"
+        f"Multiline request (any multi-line cell, including %% cell magics), shown indented -- send it flush-left:\n"
+        f"    --\n    <complete cell>\n    {delim}\ndoc(clikernel.skill) documents the full protocol.\n</stream-protocol>", flush=True)
     print(_MARKER, flush=True)
     _write_response(delim)
     try:
@@ -94,11 +97,18 @@ def serve_stream(
             line = _next_line(sys.stdin)
             if not line: break
             line = line.rstrip("\n")
+            if line == delim:
+                _write_response(delim, fmt_error("protocol-error", "no multiline request is open: start one with a bare `--` line"))
+                continue
             if line == _MULTILINE:
                 code, err = _read_block(sys.stdin, delim)
                 if err:
                     _write_response(delim, fmt_error("protocol-error", err))
                     continue
+            elif line.startswith('%%'):
+                _write_response(delim, fmt_error("protocol-error",
+                    f"a %% cell magic needs a multiline request; send it as (flush-left):\n    --\n    {line}\n    <rest of cell>\n    {delim}"))
+                continue
             else: code = line
             print(".", flush=True)
             try: body = execute(code)
@@ -137,8 +147,9 @@ class _Worker:
             banner.append(line)
         self.delim = (await self.proc.stdout.readline()).decode().rstrip("\n")
         # banner[0] is "please wait, loading..."; the rest is the server info block (instructions + any
-        # startup output), forwarded verbatim to the mcp `instructions` field.
-        self.startup_info = "".join(banner[1:]).strip()
+        # startup output), forwarded to the mcp `instructions` field minus the CLI-only <stream-protocol> element.
+        info = "".join(banner[1:])
+        self.startup_info = re.sub(r'<stream-protocol>.*?</stream-protocol>\n?', '', info, flags=re.S).strip()
         self.started,self.busy,self.desynced = True,False,False
 
     async def kill(self, grace=3):

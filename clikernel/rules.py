@@ -39,11 +39,20 @@ def _textpath(node):
         and not n.value.lower().endswith(_DATA_EXTS) for n in ast.walk(node))
 
 
+def _is_read(c):
+    "A read_text()/open().read() call on a recognisably-named non-data file"
+    if not (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)): return False
+    if c.func.attr == 'read_text': return _textpath(c.func.value)
+    return c.func.attr == 'read' and isinstance(c.func.value, ast.Call) and _callee(c.func.value) == 'open' and _textpath(c.func.value)
+
+
 def _read_file(tree, src, sess):
-    for c in _calls(tree):
-        if isinstance(c.func, ast.Attribute):
-            if c.func.attr == 'read_text' and _textpath(c.func.value): return True
-            if c.func.attr == 'read' and isinstance(c.func.value, ast.Call) and _callee(c.func.value) == 'open' and _textpath(c.func.value): return True
+    "Only a displayed read (bare expression or print) earns the note: a parser-bound or assigned read never enters context"
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Expr):
+            v = n.value
+            if _is_read(v): return True
+            if isinstance(v, ast.Call) and _callee(v) == 'print' and any(_is_read(a) for a in v.args): return True
 
 
 def _big_replace(tree, src, sess):
@@ -99,7 +108,7 @@ def _run_magic(tree, src, sess):
 
 
 _BOOT = {'doc','list_pyskills'}   # live at the package top level, so the bootstrap line imports them piecemeal by design
-_EXEMPT = _BOOT | {'dojo_start','dojo_score','dojo_redo','doced','forget_doced','forget_dojo'}   # the prescribed interfaces are called bare by design
+_EXEMPT = _BOOT | {'dojo_start','dojo_score','dojo_redo','dojo_resume','doced','forget_doced','forget_dojo'}   # the prescribed interfaces are called bare by design
 
 def _piecemeal(tree, src, sess):
     for n in ast.walk(tree):
@@ -111,8 +120,11 @@ def _piecemeal(tree, src, sess):
             if found: return True
 
 
-def _is_editable(o):
-    f = getattr(sys.modules.get(getattr(o, '__module__', None)), '__file__', None)
+def _needs_doc(o):
+    "Editable-install tooling gets doc() before first use; fastcore is ambient vocabulary, not tooling"
+    m = getattr(o, '__module__', None) or ''
+    if m.split('.')[0] == 'fastcore': return False
+    f = getattr(sys.modules.get(m), '__file__', None)
     return bool(f) and 'site-packages' not in f and not f.startswith((sys.prefix, sys.base_prefix))
 
 
@@ -132,7 +144,7 @@ def _nodoc(tree, src, sess):
                and any(_callee(c) == 'doc' and any(isinstance(a, ast.Name) and a.id == g.target.id for a in c.args) for c in _calls(n)):
                 sess.doced.update(x for e in g.iter.elts for x in _docnames(ast.unparse(e)))
     new = {nm for c in _calls(tree) if (nm := _callee(c)) and not nm.startswith('_') and nm not in _EXEMPT and nm not in sess.doced
-        and callable(sess.ns.get(nm)) and _is_editable(sess.ns[nm])}
+        and callable(sess.ns.get(nm)) and _needs_doc(sess.ns[nm])}
     sess.undoced |= new
     return ', '.join(sorted(new)) if new else None
 

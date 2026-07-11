@@ -14,11 +14,14 @@ This is especially useful with [pyskills](https://github.com/AnswerDotAI/pyskill
 
 ## Protocol
 
-On startup, `clikernel` prints loading status followed by a random session delimiter:
+On startup, `clikernel` prints loading status, a short `<stream-protocol>` framing recipe (with the live delimiter, indented so line-based readers don't mistake it for the real one), and finally the random session delimiter:
 
 ```text
 please wait, loading...
-loading complete. first delimiter:
+<stream-protocol>
+...
+</stream-protocol>
+loading complete. session delimiter:
 --aB3x9
 ```
 
@@ -67,11 +70,11 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 
 `%nbopen` sets the default notebook for later `%nbrun` calls (as does passing `--fname`). `%nbrun` runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells with an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, and each executed cell's rendered output is printed under a `--- {cell id} ---` header.
 
-`clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the first delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
+`clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the session delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
 
 ## Startup file
 
-On startup, after creating the shell and before the first delimiter, `clikernel` runs `$XDG_CONFIG_HOME/clikernel/startup.py` (usually `~/.config/clikernel/startup.py`) if it exists. It runs in the persistent session, so any imports, variables, and helpers it defines are available to every later request. The loading banner then carries a `<startup file=...>` element with a `<source>` child holding the file's whole source and, when the file prints anything, an `<output>` child holding its captured stdout; the `clikernel-mcp` server forwards this (after its own instructions) as the MCP `instructions` field. A broken `startup.py` is reported on stderr but does not stop the kernel starting.
+On startup, after creating the shell and before the session delimiter, `clikernel` runs `$XDG_CONFIG_HOME/clikernel/startup.py` (usually `~/.config/clikernel/startup.py`) if it exists. It runs in the persistent session, so any imports, variables, and helpers it defines are available to every later request. The loading banner then carries a `<startup file=...>` element with a `<source>` child holding the file's whole source and, when the file prints anything, an `<output>` child holding its captured stdout; the `clikernel-mcp` server forwards this (after its own instructions) as the MCP `instructions` field. A broken `startup.py` is reported on stderr but does not stop the kernel starting.
 
 ## Inspectors
 
@@ -87,7 +90,7 @@ See [`examples/inspectors.py`](examples/inspectors.py) for one that blocks `subp
 
 Each complete request prints `.` on its own line before execution starts. That gives the client a cheap early byte to read, which is useful when the request will run for a while. Each response ends with the same delimiter on its own line. The client can read until that line appears instead of parsing prompts or waiting and guessing. The delimiter is random per process, so it is unlikely to appear in generated code, copied logs, examples, or earlier transcript text. Keeping it fixed for the session means a client does not get stuck just because it missed a rotated delimiter.
 
-Startup messages appear before the first delimiter. After that first delimiter, the stream follows the request-response protocol. Outputs are rendered as concise text, using unescaped XML if required when there's multiple outputs.
+Startup messages appear before the session delimiter first prints. After that, the stream follows the request-response protocol. Outputs are rendered as concise text, using unescaped XML if required when there's multiple outputs.
 
 IPython history is disabled. `IPYTHONDIR` and `MPLCONFIGDIR` get quiet defaults when the environment has not already set them, and `MPLBACKEND` defaults to `Agg`.
 

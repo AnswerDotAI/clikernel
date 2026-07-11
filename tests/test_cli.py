@@ -180,8 +180,9 @@ def test_cli(tmp_path):
         body, delim = read_until_ready(proc)
         assert body.startswith("please wait, loading...\n")           # server info announced between the loading lines
         assert "persistent IPython session" in body
-        assert body.endswith("loading complete. first delimiter:\n")
+        assert body.endswith("loading complete. session delimiter:\n")
         assert DELIM_RE.fullmatch(delim)
+        assert "<stream-protocol>" in body and f"    {delim}" in body   # framing recipe shows the live delimiter, indented so line-based readers don't stop early
 
         # ack arrives before the result; result then same delimiter
         proc.stdin.write(b"1+1\n")
@@ -202,6 +203,17 @@ def test_cli(tmp_path):
         assert '<stdout>\nhello\n</stdout>\n' in body
         assert '<display_data mime="text/markdown">' in body and '**shown**' in body
         assert '<execute_result>\n42\n</execute_result>\n' in body
+
+        # framing guards: neither request reaches the kernel, and the stream stays in sync
+        proc.stdin.write(f"{delim}\n".encode())
+        proc.stdin.flush()
+        body, nd = read_until_ready(proc)
+        assert "protocol-error" in body and "NameError" not in body and nd == delim   # stray delimiter: hint, not Python
+        proc.stdin.write(b"%%writefile x.txt\n")
+        proc.stdin.flush()
+        body, nd = read_until_ready(proc)
+        assert "protocol-error" in body and f"    {delim}" in body and nd == delim    # one-line cell magic: resend recipe with the live delimiter
+        assert send(proc, "1+1\n")[0] == "2\n"
 
         # errors: clean, single traceback, no ansi, genuine stdout preserved
         body, nd = send(proc, "1/0\n")
@@ -259,7 +271,7 @@ def test_cli_tty(tmp_path):
     proc = start_kernel_pty(tmp_path)
     try:
         body, delim = read_pty_until_ready(proc)
-        assert body.startswith("please wait, loading...\n") and body.endswith("loading complete. first delimiter:\n")
+        assert body.startswith("please wait, loading...\n") and body.endswith("loading complete. session delimiter:\n")
         os.write(proc._pty_master, b"1+1\n")
         assert _read_ptyline(proc, TIMEOUT) == ".\n"
         body, nd = read_pty_until_ready(proc)
