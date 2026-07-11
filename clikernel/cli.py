@@ -2,7 +2,7 @@ import ast,inspect,os,runpy,shlex,sys,traceback
 from pathlib import Path
 from fastcore.xdg import xdg_config_home
 from clikernel import INSTRUCTIONS
-from clikernel.base import fmt_error,init_worker,run_startup,serve_stream
+from clikernel.base import _IMG_MIMES,fmt_error,init_worker,run_startup,serve_stream
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()
@@ -59,11 +59,14 @@ def _inspect(shell, inspectors, code):
     return "".join(note for f in inspectors if (note := _call_inspector(f, tree, code)))
 
 
-def _execute(shell, inspectors, code):
-    from fastcore.nbio import render_text
+def _execute(shell, inspectors, code, media=False):
+    from fastcore.nbio import render_text,render_media
     try: note = _inspect(shell, inspectors, code)
     except Exception as e: return fmt_error("blocked", f"{type(e).__name__}: {e}")
-    return note + render_text(shell.run(code))
+    res = shell.run(code)
+    out = note + render_text(res)
+    if media: out += ''.join(f'\n<media mime="{m}">\n{d}\n</media>' for m,d in render_media(res) if m in _IMG_MIMES)
+    return out
 
 
 def _request_exit(shell): shell._clikernel_exit = True
@@ -108,7 +111,7 @@ def main():
     shell = _make_shell()
     block = _startup_block(shell)
     inspectors = _load_inspectors()
-    serve_stream(lambda code: _execute(shell, inspectors, code),
+    serve_stream(lambda code: _execute(shell, inspectors, code, media="--media" in sys.argv[1:]),
         INSTRUCTIONS + ("\n\n" + block if block else ""), should_exit=lambda: _should_exit(shell))
 
 

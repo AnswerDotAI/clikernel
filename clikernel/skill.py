@@ -73,7 +73,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
     42
     </execute_result>
 
-`display_data`/`execute_result` prefer a non-image, markdown-over-HTML representation; images are ignored. Exceptions come back as a single clean `<error>` traceback -- no color codes, not duplicated.
+`display_data`/`execute_result` prefer a non-image, markdown-over-HTML representation; image display outputs are forwarded to MCP clients as media content blocks (text-only for other consumers, unless the worker runs with `--media`). Exceptions come back as a single clean `<error>` traceback -- no color codes, not duplicated.
 
 # Interaction rules
 

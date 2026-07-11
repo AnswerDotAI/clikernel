@@ -161,3 +161,16 @@ async def test_graceful_kill(tmp_path):
     _kill_worker(w)                                  # sync path (signal handler, atexit)
     await w.proc.wait()
     assert m2.read_text() == "cleaned"
+
+
+PNG1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+
+async def test_mcp_media():
+    "Rich display outputs come back as ImageContent blocks after the text part; text-only results are unchanged."
+    async with stdio_client(_server_params()) as (r, w), ClientSession(r, w) as s:
+        await s.initialize()
+        res = await s.call_tool("execute", {"code": f"import base64; from IPython.display import Image, display; display(Image(base64.b64decode('{PNG1}'))); 'done'"})
+        assert res.content[0].type == "text" and "done" in res.content[0].text and "<media" not in res.content[0].text
+        img = next(c for c in res.content if c.type == "image")
+        assert img.mimeType == "image/png" and img.data == PNG1
+        assert await _text(s, "execute", code="40+2") == "42"

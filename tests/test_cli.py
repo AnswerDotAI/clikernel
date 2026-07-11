@@ -67,12 +67,12 @@ def _env(tmp_path):
     return env
 
 
-def start_kernel(tmp_path, extra_env=None):
+def start_kernel(tmp_path, extra_env=None, args=()):
     cmd = shutil.which("clikernel")
     assert cmd, "clikernel console script is not on PATH"
     env = _env(tmp_path)
     if extra_env: env.update(extra_env)
-    proc = subprocess.Popen([cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    proc = subprocess.Popen([cmd, *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     proc._stdout_buffer = bytearray()
     return proc
 
@@ -368,4 +368,23 @@ def test_cli_profile(tmp_path):
         read_until_ready(proc)
         assert send(proc, "prof_ran\n")[0] == "7\n"
         assert send(proc, "ck_ext\n")[0] == "1\n"
+    finally: stop_kernel(proc)
+
+
+PNG1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+SHOW_IMG = f"import base64; from IPython.display import Image, display; display(Image(base64.b64decode('{PNG1}'))); 'done'"
+
+def test_media_flag(tmp_path):
+    "Rich outputs stay text-only by default (existing consumers see no change); --media appends <media> elements after the rendered text."
+    proc = start_kernel(tmp_path)
+    try:
+        read_until_ready(proc)
+        out, _ = send(proc, SHOW_IMG + "\n")
+        assert "done" in out and "<media" not in out
+    finally: stop_kernel(proc)
+    proc = start_kernel(tmp_path, args=("--media",))
+    try:
+        read_until_ready(proc)
+        out, _ = send(proc, SHOW_IMG + "\n")
+        assert "done" in out and f'<media mime="image/png">\n{PNG1}\n</media>' in out
     finally: stop_kernel(proc)
