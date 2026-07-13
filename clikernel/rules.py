@@ -71,7 +71,7 @@ def _cell_str_replace(tree, src, sess):
     "Only the obvious single-cell form (a literal id that isn't 'all'): batch replaces over many cells are sanctioned"
     for c in _calls(tree):
         if _callee(c) != 'cell_str_replace': continue
-        cid = c.args[1] if len(c.args) > 1 else next((k.value for k in c.keywords if k.arg == 'id'), None)
+        cid = c.args[0] if c.args else next((k.value for k in c.keywords if k.arg == 'id'), None)
         if isinstance(cid, ast.Constant) and isinstance(cid.value, str) and cid.value != 'all': return True
 
 

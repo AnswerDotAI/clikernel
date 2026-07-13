@@ -22,14 +22,14 @@ def test_rules():
     # big replace_lines payload -> delete + %%exhash a
     big = "x = 1\n" * 9
     assert fires(f"file_replace_lines(p, new_content={big!r})", "big_replace")
-    assert fires(f"cell_replace_lines(p, cid, new_content={big!r})", "big_replace")
+    assert fires(f"cell_replace_lines(cid, new_content={big!r})", "big_replace")
     assert not fires("file_replace_lines(p, new_content='x = 1')", "big_replace")
 
     # single-cell cell_str_replace -> %%exhash path cellid; batch replaces (id list / 'all') are sanctioned
-    assert fires("cell_str_replace(p, 'ab12', 'a', 'b')", "cell_str_replace")
-    assert not fires("cell_str_replace(p, ['ab12','cd34'], 'a', 'b')", "cell_str_replace")
-    assert not fires("cell_str_replace(p, 'all', 'a', 'b')", "cell_str_replace")
-    assert not fires("cell_str_replace(p, cids, 'a', 'b')", "cell_str_replace")   # variables unknowable: stay quiet
+    assert fires("cell_str_replace('ab12', 'a', 'b', fname=p)", "cell_str_replace")
+    assert not fires("cell_str_replace(['ab12','cd34'], 'a', 'b')", "cell_str_replace")
+    assert not fires("cell_str_replace('all', 'a', 'b')", "cell_str_replace")
+    assert not fires("cell_str_replace(cids, 'a', 'b')", "cell_str_replace")   # variables unknowable: stay quiet
 
     # non-raw triple-quote containing backslashes -> r-string
     assert fires('s = """a\\nb"""', "rawstr")
