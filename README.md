@@ -58,17 +58,16 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 
 ## Notebook magics
 
-`clikernel` registers two line magics wrapping `execnb`'s `nbopen`/`nbrun`, for running cells from a notebook by cell id prefix:
+`clikernel` registers a `%nbrun` line magic wrapping `execnb`'s `nbrun`, for running cells from a notebook by cell id prefix:
 
 ```text
-%nbopen foo.ipynb
 %nbrun ab12
 %nbrun ab12 --above
 %nbrun --all --exported
 %nbrun ab12 --fname other.ipynb
 ```
 
-`%nbopen` sets the default notebook for later `%nbrun` calls (as does passing `--fname`). `%nbrun` runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells with an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, and each executed cell's rendered output is printed under a `--- {cell id} ---` header.
+`%nbrun` defaults to pyskills' current notebook (set with `pyskills.ipynb.set_nb`) when pyskills is installed; `--fname` overrides for one call. It runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells with an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, and each executed cell's rendered output is printed under a `--- {cell id} ---` header.
 
 `clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the session delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
 
@@ -80,7 +79,7 @@ On startup, after creating the shell and before the session delimiter, `clikerne
 
 `clikernel` can check each cell before it runs, to warn about or forbid certain code. On startup it loads inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py` (usually `~/.config/clikernel/inspectors.py`). If that file is absent, nothing changes.
 
-Each cell is transformed first (so IPython magics and `!` shell escapes parse), and its AST is passed to every inspector before the cell executes. An inspector returns a string to prepend a note to the cell's output, raises to block the cell (it does not run, and the exception is reported), or returns None to do nothing. Define a function `inspect(tree)` and/or a list `inspectors` of such functions in the file. A broken `inspectors.py` is reported on stderr and skipped, so it cannot stop the kernel starting.
+Each cell is transformed first (so IPython magics and `!` shell escapes parse), and its AST is passed to every inspector before the cell executes. An inspector returns a string to prepend a note to the cell's output, raises `clikernel.rules.RuleBlock` to block the cell (it does not run, and the message is reported), or returns None to do nothing. Any other exception from an inspector is treated as an inspector bug: a warning is prepended and the cell still runs. Define a function `inspect(tree)` and/or a list `inspectors` of such functions in the file. A broken `inspectors.py` is reported on stderr and skipped, so it cannot stop the kernel starting.
 
 See [`examples/inspectors.py`](examples/inspectors.py) for one that blocks `subprocess`, `os.system`/`os.popen`, and `!` escapes, steering the agent to the permission-checked Bash tool instead.
 

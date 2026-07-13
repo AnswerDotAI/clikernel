@@ -49,16 +49,15 @@ To end the session, send `exit`. In CLI mode there is no `restart` tool -- start
 
 # Notebook magics
 
-`execute` runs IPython, not plain Python, so magics work as written. Two line magics run cells from a `.ipynb` file by cell id prefix:
+`execute` runs IPython, not plain Python, so magics work as written. The `%nbrun` line magic runs cells from a `.ipynb` file by cell id prefix:
 
-    %nbopen foo.ipynb
     %nbrun ab12
     %nbrun ab12 cd34 ef56
     %nbrun ab12 --above
     %nbrun --all --exported
     %nbrun ab12 --fname other.ipynb
 
-`%nbopen` sets the default notebook for later `%nbrun` calls (passing `--fname` does too). `%nbrun` takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state, and `restart` clears the `%nbopen` default.
+`%nbrun` targets pyskills' current notebook (`set_nb(fname)` from `pyskills.ipynb`), so the same registration covers editing tools and cell running alike; `--fname` overrides for one call. It takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state; `restart` clears the current notebook along with everything else.
 
 Prefer these magics over copying cell source into `execute` by hand when working through a notebook -- e.g. after editing a cell, `%nbrun <id>` re-runs it in place, and `%nbrun <id> --above` rebuilds the state it depends on.
 
@@ -89,7 +88,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
 - `importlib.reload`ing a module is not always enough to pick up a change: other already-imported modules that did `from x import *`, or that monkeypatched one of its classes (e.g. via fastcore's `@patch`), hold stale references that a targeted reload won't fix. If you hit a stale-class symptom (a class missing a method you know it has, `isinstance` mysteriously failing), you need a fresh interpreter process: the MCP `restart` tool, or in CLI mode, exit and start a new process.
 - Everything a cell outputs lands in the conversation and stays there. Be surgical: inspect only what's needed, and don't dump large values -- `print(len(v))` first, then decide whether to print in full or filter down.
 - The kernel is scoped to one client session and shared by any subagents within it. If the server restarts or exits, in-memory state is gone -- redo imports and setup.
-- If the host conversation survived a kernel restart and the relevant `doc()` output is still visible, call `doced(name1, name2, ...)` to restore doc state without reprinting it. After context compaction, call `forget_doced()` and read the docs again.
+- If the host conversation survived a kernel restart and the relevant `doc()` output is still visible, call `doced(name1, name2, ...)` (`from clikernel.rules import doced, forget_doced`) to restore doc state without reprinting it. After context compaction, call `forget_doced()` and read the docs again.
 
 # Pyskills
 

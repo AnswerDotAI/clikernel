@@ -5,7 +5,7 @@ from pathlib import Path
 from clikernel.cli import _state_root
 from clikernel.rules import live_session, scan, _callee, _calls
 
-__all__ = ['dojo_start','dojo_score','dojo_redo','dojo_resume','forget_dojo']
+__all__ = ['dojo_start','dojo_score','dojo_redo','dojo_resume','forget_dojo','dojo_version','register_completion']
 
 _RUN = {}
 
@@ -13,7 +13,7 @@ _WEEK = 7*86400
 
 def _version():
     from clikernel import __version__
-    return f"{__version__}:2"
+    return f"{__version__}:3"
 
 def _complete_file():
     "Completion record path: a sibling of the swept run root, so the sweep never touches it"
@@ -26,6 +26,17 @@ def _completions():
     f = _complete_file()
     recs = json.loads(f.read_text()) if f.exists() else {}
     return {k: r for k, r in recs.items() if r['t'] > time.time() - _WEEK}
+
+def dojo_version():
+    "The current dojo tooling version, as recorded with completion ids"
+    return _version()
+
+def register_completion(cid, v=None):
+    "Record `cid` as a clean-round completion (e.g. from a session template whose round is in history), so `dojo_start(cid)` honors it"
+    recs = _completions()
+    recs[cid] = dict(t=time.time(), v=v or _version())
+    _complete_file().write_text(json.dumps(recs))
+    return cid
 
 def forget_dojo():
     "Truncate the dojo completion record (e.g. after a tooling change): every session redoes the round"
@@ -55,6 +66,7 @@ def _chk_core(d):
     if "units='metric'" not in t or 'imperial' in t: out.append("default units is not 'metric'")
     if len(re.findall(r'\bcfg\b', t)) != 1 or len(re.findall(r'\bconfig\b', t)) != 3:
         out.append('cfg -> config rename incomplete, or the docstring was changed')
+    if not re.search(r'\bload_cfg\b', t): out.append('load_cfg was renamed: only the cfg variable changes name')
     return out
 
 def _chk_tmpl(d):
@@ -77,7 +89,7 @@ KATAS = [
         prompt='What does the weather module do, and which notebook cells call httpx? Answer in prose, naming cells by id, and pass it via dojo_score(orient="...").'),
     dict(name='edit set', par=2, files=['core.py'], check=_chk_core,
         route='lnhashview_file, then ONE exhash_file with each command tuple as a positional argument, worked bottom-to-top',
-        prompt="In core.py: change the default units to 'metric', and rename cfg to config everywhere in code (docstring unchanged)."),
+        prompt="In core.py: change the default units to 'metric', and rename the cfg variable to config everywhere (load_cfg keeps its name; docstring unchanged)."),
     dict(name='hostile replace', par=2, files=['tmpl.py'], check=_chk_tmpl,
         route='lnhashview_file, then one %%exhash with a range-c address; payload verbatim, no quoting. (% c would replace the whole file: too much here)',
         prompt='In tmpl.py: replace the whole render() function with exactly this, verbatim:\n\n' + _TMPL_IND),
@@ -124,11 +136,16 @@ def _rm_run(p):
 
 
 def dojo_start(id=None):
-    "Set up a fresh practice run: copy the kata project to a private dir, start tracing, and print the kata card. Pass a completion `id` from a previous clean round to skip when it's on record (last week, same tooling version)."
+    "Set up a fresh practice run: copy the kata project to a private dir, start tracing, and print the kata card. Pass a completion `id` from a previous clean round to skip when it's on record (last week, same tooling version); an id that fails the check reports why, and never deals a round."
     if id:
-        rec = _completions().get(id)
-        if rec and rec.get('v') == _version(): return print(f"Dojo already complete (id {id}): no tasks.")
-        print(f"id {id!r} not on record: expired, truncated, or the tooling changed since. Run the round.")
+        recs = _completions()
+        if (rec := recs.get(id)) and rec.get('v') == _version(): return print(f"Dojo already complete (id {id}): no tasks.")
+        f = _complete_file()
+        raw = json.loads(f.read_text()) if f.exists() else {}
+        if id not in raw: why = 'never registered on this machine, or truncated since'
+        elif id not in recs: why = f"expired: its clean round was {(time.time()-raw[id]['t'])/86400:.0f} days ago, and records last a week"
+        else: why = f"recorded under tooling {raw[id]['v']}, but the current tooling is {_version()}"
+        return print(f"id {id!r} not on record ({why}). Checking never deals a round: run dojo_start() when ready to play one.")
     from IPython import get_ipython
     root = _state_root()/'dojo'
     if root.exists():   # sweep runs abandoned by earlier sessions
@@ -249,11 +266,10 @@ def dojo_score(bash_calls=0, orient=''):
     if ok:
         _RUN['ip'].events.unregister('pre_run_cell', _RUN['log'])
         _rm_run(d)
+        ip = _RUN['ip']
         _RUN.clear()
-        cid = uuid.uuid4().hex[:4]
-        recs = _completions()
-        recs[cid] = dict(t=time.time(), v=_version())
-        _complete_file().write_text(json.dumps(recs))
+        cid = register_completion(uuid.uuid4().hex[:4])
+        for n in __all__: ip.user_ns.pop(n, None)
         print(f"Clean round. Run dir removed. Completion id: {cid} - keep this id, including through compaction: passing dojo_start({cid!r}) in a future session skips the round.")
     else:
         _RUN['paused'] = True

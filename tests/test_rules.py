@@ -57,16 +57,23 @@ def test_rules():
     assert not fires("exhash_file(p, (a, 's', 'longer than twenty chars ok'))", "tuple_payload")  # s is not a payload command
     assert not fires("exhash_file(p, (a, 'c', body))", "tuple_payload")            # variables unknowable: stay quiet
 
+    # literal \n in an s-replacement -> real newline; oversized s-replacement -> c command
+    assert fires(r"exhash_file(p, ('1|aa|', 's', 'x', r'a\nb'))", "s_newline")     # 2-char \n stays literal: a mistake
+    assert not fires(r"exhash_file(p, ('1|aa|', 's', 'x', 'a\nb'))", "s_newline")  # real newline: intended multiline
+    assert not fires(r"exhash_file(p, ('1|aa|', 's', r'x\n', 'y'))", "s_newline")  # pattern field: regex \n is meaningful
+    assert fires(f"exhash_file(p, ('1|aa|', 's', 'x', {'y'*121!r}))", "s_long")
+    assert not fires(f"exhash_file(p, ('1|aa|', 's', 'x', {'y'*120!r}))", "s_long")
+
     # blockers
     assert fires("import subprocess", "shell_escape")
     assert fires("os.system('ls')", "shell_escape")
     assert fires("!ls", "shell_escape")                          # `!` escapes are seen via the transformed cell
-    assert fires("%nbopen f.ipynb\nPath('f.py').read_text()", "read_file")  # rules still run on cells containing magics
+    assert fires("%nbrun ab12\nPath('f.py').read_text()", "read_file")  # rules still run on cells containing magics
     assert fires("sys.path.insert(0, 'x')", "sys_path")
     assert fires("sys.path.append('x')", "sys_path")
 
 
-def test_session_rules():
+def test_session_rules(monkeypatch):
     "Cross-cell rules: piecemeal skill imports, doc-before-first-call, and re-nagging on every miss."
     s = Session()
     assert fires("from rgapi import rg", "piecemeal", s)          # rgapi has a .skill module
@@ -90,6 +97,20 @@ def test_session_rules():
     assert not fires("store_attr()", "nodoc", Session(ns={"store_attr": fastcore.basics.store_attr}))  # fastcore is ambient vocabulary, not tooling
     import clikernel.dojo as dj
     assert not fires("dojo_score()", "nodoc", Session(ns={"dojo_score": dj.dojo_score}))  # the dojo interface is the blessed route
+    # __main__ functions were authored in-session: never need doc(), even when a Path __file__ leaks into the namespace
+    import sys, types
+    from pathlib import Path
+    fake_main = types.ModuleType('__main__'); fake_main.__file__ = Path('/tmp/proj/nb.py')
+    monkeypatch.setitem(sys.modules, '__main__', fake_main)
+    def mainfn(): pass
+    mainfn.__module__ = '__main__'
+    assert not fires("mainfn()", "nodoc", Session(ns={"mainfn": mainfn}))
+    # exotic loaders can set any module's __file__ to a Path: coerced, not crashed
+    fakemod = types.ModuleType('fakemod'); fakemod.__file__ = Path('/tmp/proj/fakemod.py')
+    monkeypatch.setitem(sys.modules, 'fakemod', fakemod)
+    def toolfn(): pass
+    toolfn.__module__ = 'fakemod'
+    assert fires("toolfn()", "nodoc", Session(ns={"toolfn": toolfn}))
 
     # doc(f) in a loop or comprehension over literal names docs each of them
     s5 = Session(ns={"rg": rgapi.skill.rg, "fd": rgapi.skill.fd})
@@ -152,6 +173,23 @@ def test_doced_state(tmp_path, monkeypatch):
     cr.forget_doced()
     cr.make_inspector()
     assert not cr._LIVE.doced                       # post-compaction reset: everything needs doc() again
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sid-123")
+    monkeypatch.setattr(cr, "_HOST", None)
+    assert cr._doced_file().name == 'sid-123.json'  # per-spawn session id when no transcript is found
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
+    monkeypatch.setattr(cr, "_HOST", None)
+    assert cr._doced_file().name == f'{os.getppid()}.json'
+    home = tmp_path/'home'
+    tdir = home/'.claude'/'projects'/'-my-proj'
+    tdir.mkdir(parents=True)
+    (tdir/'aaa.jsonl').write_text('')
+    (tdir/'bbb.jsonl').write_text('')
+    os.utime(tdir/'aaa.jsonl', (0, 0))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/my/proj")
+    monkeypatch.setattr(cr, "_HOST", None)
+    assert cr._doced_file().name == 'bbb.json'      # most recent transcript: the conversation that spawned this worker
 
 
 def test_note_tag(tmp_path, monkeypatch):

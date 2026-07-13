@@ -3,13 +3,14 @@
 Copy this to `$XDG_CONFIG_HOME/clikernel/inspectors.py` (usually
 `~/.config/clikernel/inspectors.py`) to enable it. clikernel calls each inspector
 with the parsed AST of every cell, before the cell runs. An inspector may return a
-string (prepended to the cell's output as a note), raise (the cell does not run and
+string (prepended to the cell's output as a note), raise RuleBlock (the cell does not run and
 the exception is reported), or return None (do nothing). Define `inspect` and/or a
 list `inspectors` of such functions.
 
-This one raises, so it blocks. To warn instead, `return` the message rather than raising.
+This one raises RuleBlock, so it blocks (any other exception is treated as an inspector bug: the cell still runs). To warn instead, `return` the message rather than raising.
 """
 import ast
+from clikernel.rules import RuleBlock
 
 _BANNED_MODS = {"subprocess"}
 
@@ -28,4 +29,4 @@ def _hit(tree):
     return False
 
 def inspect(tree):
-    if _hit(tree): raise RuntimeError("subprocess/shell execution is not allowed from the kernel — use the Bash tool, which routes through the permission layer.")
+    if _hit(tree): raise RuleBlock("subprocess/shell execution is not allowed from the kernel — use the Bash tool, which routes through the permission layer.")

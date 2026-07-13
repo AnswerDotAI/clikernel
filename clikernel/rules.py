@@ -1,5 +1,6 @@
 "Best-practice detection rules shared by the live cell inspectors and the dojo scorer. Each note teaches exactly one route, since agents reproduce whatever patterns their context shows them."
 import ast,importlib.util,json,os,re,sys,time,tokenize
+from pathlib import Path
 from io import StringIO
 from fastcore.basics import store_attr
 
@@ -21,6 +22,10 @@ class Finding:
 
 class Rule:
     def __init__(self, name, note, fn, block=False, raw=False, tag='note'): store_attr()
+
+
+class RuleBlock(Exception):
+    "Raised by an inspector to deliberately block a cell; any other inspector exception is a bug, and fails open"
 
 
 def _calls(tree):
@@ -93,6 +98,24 @@ def _tuple_payload(tree, src, sess):
                and (len(n.elts[2].value) > 20 or any(ch in n.elts[2].value for ch in '\'"\\')): return True
 
 
+def _s_repls(tree):
+    "String-constant replacement fields of s-commands in exhash calls"
+    for c in _calls(tree):
+        if _callee(c) not in ('exhash','exhash_file','exhash_cell'): continue
+        for n in ast.walk(c):
+            if isinstance(n, ast.Tuple) and len(n.elts) >= 4 \
+               and isinstance(n.elts[1], ast.Constant) and n.elts[1].value == 's' \
+               and isinstance(n.elts[3], ast.Constant) and isinstance(n.elts[3].value, str):
+                yield n.elts[3].value
+
+
+def _s_newline(tree, src, sess): return any('\\n' in r for r in _s_repls(tree))
+
+
+def _s_long(tree, src, sess): return any(len(r) > 120 for r in _s_repls(tree))
+
+
+
 def _postproc(tree, src, sess):
     for n in ast.walk(tree):
         if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Call) and _callee(n.value) in _TOOLING \
@@ -121,10 +144,10 @@ def _piecemeal(tree, src, sess):
 
 
 def _needs_doc(o):
-    "Editable-install tooling gets doc() before first use; fastcore is ambient vocabulary, not tooling"
+    "Editable-install tooling gets doc() before first use; fastcore is ambient vocabulary, and __main__ was authored in-session"
     m = getattr(o, '__module__', None) or ''
-    if m.split('.')[0] == 'fastcore': return False
-    f = getattr(sys.modules.get(m), '__file__', None)
+    if m == '__main__' or m.split('.')[0] == 'fastcore': return False
+    f = str(getattr(sys.modules.get(m), '__file__', None) or '')   # some loaders set __file__ to a Path
     return bool(f) and 'site-packages' not in f and not f.startswith((sys.prefix, sys.base_prefix))
 
 
@@ -170,6 +193,8 @@ RULES = [
     Rule('rawstr', 'Write non-trivial strings as r""" raw strings; %%exhash payloads need no escaping at all.', _rawstr),
     Rule('hashcalc', 'exhash addresses come only from a fresh lnhashview; never compute them.', _hashcalc),
     Rule('tuple_payload', 'Apply a/i/c payloads with the %%exhash magic: its payload needs no quoting or escaping.', _tuple_payload),
+    Rule('s_newline', r'A 2-char \n in an s-replacement stays literal text: use a real newline in the string.', _s_newline),
+    Rule('s_long', 'An s-replacement over 120 chars rewrites the line: use a c command (%%exhash <addr> c) instead.', _s_long),
     Rule('postproc', "Show tooling results bare; narrow with the tool's own parameters.", _postproc),
     Rule('run_magic', 'Invoke magics directly with % syntax.', _run_magic, raw=True),
     Rule('piecemeal', 'Load skill modules whole: from <pkg>.skill import *, after doc(<pkg>.skill).', _piecemeal),
@@ -204,14 +229,30 @@ def scan(src, sess):
 
 _LIVE = None
 
+_HOST = None
+
+def _resolve_host():
+    "The stable host conversation id: the most recent transcript for this project survives worker restarts AND resumes; fall back to the per-spawn session id, then our parent pid"
+    if (pd := os.environ.get('CLAUDE_PROJECT_DIR')):
+        d = Path.home()/'.claude'/'projects'/re.sub(r'[^A-Za-z0-9]', '-', pd)
+        try: return max(d.glob('*.jsonl'), key=lambda p: p.stat().st_mtime).stem
+        except ValueError: pass
+    return os.environ.get('CLAUDE_CODE_SESSION_ID') or os.getppid()
+
+def _host_session():
+    "Resolved once per worker: at spawn, the spawning conversation's transcript is the freshest"
+    global _HOST
+    if _HOST is None: _HOST = _resolve_host()
+    return _HOST
+
 def _doced_file():
-    "One doc-state file per host session, keyed by this worker's parent pid; abandoned sessions' files are swept after a day"
+    "One doc-state file per host conversation (see `_resolve_host`); abandoned sessions' files are swept after a day"
     from clikernel.cli import _state_root
     d = _state_root()/'doced'
     d.mkdir(parents=True, exist_ok=True)
     for f in d.iterdir():
         if f.stat().st_mtime < time.time() - 86400: f.unlink(missing_ok=True)
-    return d/f'{os.getppid()}.json'
+    return d/f'{_host_session()}.json'
 
 def _save_doced(sess): _doced_file().write_text(json.dumps(sorted(sess.doced)))
 
@@ -252,7 +293,7 @@ def make_inspector():
         out = []
         for f in fs:
             r = next(r for r in RULES if r.name == f.rule)
-            if r.block: raise RuntimeError(f'{f.note} (This check is an early version: if the block seems wrong here, stop and tell your user.)')
+            if r.block: raise RuleBlock(f'{f.note} (This check is an early version: if the block seems wrong here, stop and tell your user.)')
             out.append(f'<{r.tag}>\n{f.note}\n</{r.tag}>\n')
         return ''.join(out)
     return _inspect

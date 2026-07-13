@@ -120,7 +120,7 @@ def test_dojo(tmp_path, monkeypatch):
     run("s2 = 2")
     run("s3 = 3")
     d2 = dj._RUN['dir']
-    core = (d2/'core.py').read_text().replace("'imperial'", "'metric'").replace('load_cfg', 'load_config') \
+    core = (d2/'core.py').read_text().replace("'imperial'", "'metric'") \
         .replace('cfg = dict', 'config = dict').replace('cfg[k', 'config[k').replace('return cfg', 'return config')
     (d2/'core.py').write_text(core)
     (d2/'tmpl.py').write_text('"Plain-text rendering for weather summaries."\n\n\n' + dj._TMPL_PAYLOAD)
@@ -132,11 +132,17 @@ def test_dojo(tmp_path, monkeypatch):
     assert "kata 'hostile replace' (strokes 3, par 2, +1 over)" in out  # over-par kata, under-par round
     assert "over-par katas" not in out and "dojo_redo(" not in out       # clean round: no contradictory redo demand
     cid = re.search(r"Completion id: ([0-9a-f]{4})", out)[1]
+    assert run("print('s1' in globals())").strip() == 'True'          # user state survives completion
+    assert run("print('dojo_score' in globals())").strip() == 'False' # the dojo's own names are removed
+    run("from clikernel.dojo import *")                               # re-import the dojo API for the receipt check
     out = run(f"dojo_start({cid!r})")
     assert "already complete" in out and not dj._RUN        # receipt honored: no tasks, no run started
     run("forget_dojo()")                                    # tooling changed: truncate the record
     out = run(f"dojo_start({cid!r})")
-    assert "not on record" in out and "== clikernel dojo ==" in out and dj._RUN  # graceful: full round again
+    assert "not on record" in out and "never deals" in out            # informational refusal, with the reason
+    assert "== clikernel dojo ==" not in out and not dj._RUN           # ...and no round forced on a mere check
+    out = run("dojo_start()")                                          # an explicit bare start still deals
+    assert "== clikernel dojo ==" in out and dj._RUN
 
 
 def test_kata_tag():
@@ -145,3 +151,42 @@ def test_kata_tag():
     assert dj._kata_tag('# kata 2 done, kata 3 next') == [3]
     assert dj._kata_tag('# katas 1+4: shared search') == [1, 4]
     assert dj._kata_tag('# plain narration, no tag') is None
+
+
+def test_register_completion(tmp_path, monkeypatch):
+    "Public registration: session-template launchers record a receipt, version-gated exactly like the dojo's own."
+    monkeypatch.setenv("CLIKERNEL_STATE_DIR", str(tmp_path))
+    assert dj.register_completion('beef') == 'beef'
+    assert dj._completions()['beef']['v'] == dj.dojo_version()
+    dj.register_completion('dead', 'stale:0')                # a receipt from other tooling: kept, but won't validate
+    assert dj._completions()['dead']['v'] == 'stale:0'
+
+
+def test_start_refusals(tmp_path, monkeypatch, capsys):
+    "An id that fails the completion check reports which reason applies, and never deals a round."
+    monkeypatch.setenv("CLIKERNEL_STATE_DIR", str(tmp_path))
+    before = dict(dj._RUN)
+    dj.register_completion('dead', 'stale:0')
+    dj.dojo_start('dead')
+    out = capsys.readouterr().out
+    assert 'stale:0' in out and dj.dojo_version() in out    # version mismatch names both versions
+    dj.dojo_start('cafe')
+    assert 'never registered' in capsys.readouterr().out    # absent id: no record at all
+    import json, time
+    dj._complete_file().write_text(json.dumps({'old1': dict(t=time.time()-8*86400, v=dj.dojo_version())}))
+    dj.dojo_start('old1')
+    out = capsys.readouterr().out
+    assert 'expired' in out and '8 days ago' in out         # expired id: age reported
+    assert dict(dj._RUN) == before                          # no round was dealt by any refusal
+
+
+def test_chk_core(tmp_path):
+    "The cfg variable renames; load_cfg (the function) keeps its name -- a boundary-precise rename, not a substring one."
+    from importlib.resources import files
+    base = (files('clikernel')/'dojo_data'/'proj'/'core.py').read_text()
+    good = base.replace("'imperial'", "'metric'").replace('cfg = dict', 'config = dict') \
+        .replace('cfg[k', 'config[k').replace('return cfg', 'return config')
+    (tmp_path/'core.py').write_text(good)
+    assert dj._chk_core(tmp_path) == []
+    (tmp_path/'core.py').write_text(good.replace('load_cfg', 'load_config'))
+    assert any('load_cfg' in m for m in dj._chk_core(tmp_path))
