@@ -4,7 +4,7 @@
 
 `clikernel` exposes one long-lived IPython process (wrapping `execnb.shell.CaptureShell`) that runs Python/IPython code and keeps state across the whole conversation: imports, live objects, monkeypatches, cached results, API clients, small experiments. Treat it as a notebook-style workbench, not a one-shot script runner.
 
-Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search goes through the `rgapi` pyskill (`rg()`/`fd()`), and GitHub work (PRs, issues, CI status) through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for local git operations, project test/build commands, and non-Python tools.
+Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search and directory listing go through the `rgapi` pyskill (`rg()`/`fd()`/`ls()`), and GitHub work (PRs, issues, CI status) through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for local git operations, project test/build commands, and non-Python tools.
 
 There are two ways to drive it, depending on what the host supports:
 
@@ -88,7 +88,6 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
 - `importlib.reload`ing a module is not always enough to pick up a change: other already-imported modules that did `from x import *`, or that monkeypatched one of its classes (e.g. via fastcore's `@patch`), hold stale references that a targeted reload won't fix. If you hit a stale-class symptom (a class missing a method you know it has, `isinstance` mysteriously failing), you need a fresh interpreter process: the MCP `restart` tool, or in CLI mode, exit and start a new process.
 - Everything a cell outputs lands in the conversation and stays there. Be surgical: inspect only what's needed, and don't dump large values -- `print(len(v))` first, then decide whether to print in full or filter down.
 - The kernel is scoped to one client session and shared by any subagents within it. If the server restarts or exits, in-memory state is gone -- redo imports and setup.
-- If the host conversation survived a kernel restart and the relevant `doc()` output is still visible, call `doced(name1, name2, ...)` (`from clikernel.rules import doced, forget_doced`) to restore doc state without reprinting it. After context compaction, call `forget_doced()` and read the docs again.
 
 # Pyskills
 

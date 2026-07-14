@@ -10,7 +10,7 @@ list `inspectors` of such functions.
 This one raises RuleBlock, so it blocks (any other exception is treated as an inspector bug: the cell still runs). To warn instead, `return` the message rather than raising.
 """
 import ast
-from clikernel.rules import RuleBlock
+from clikernel.base import RuleBlock
 
 _BANNED_MODS = {"subprocess"}
 

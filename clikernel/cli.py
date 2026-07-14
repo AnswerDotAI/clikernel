@@ -2,8 +2,7 @@ import ast,inspect,os,runpy,shlex,sys,traceback
 from pathlib import Path
 from fastcore.xdg import xdg_config_home
 from clikernel import INSTRUCTIONS
-from clikernel.base import fmt_error,init_worker,run_startup,serve_stream
-from clikernel.rules import RuleBlock
+from clikernel.base import RuleBlock,fmt_error,init_worker,run_startup,serve_stream
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()

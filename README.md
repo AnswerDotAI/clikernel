@@ -79,9 +79,9 @@ On startup, after creating the shell and before the session delimiter, `clikerne
 
 `clikernel` can check each cell before it runs, to warn about or forbid certain code. On startup it loads inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py` (usually `~/.config/clikernel/inspectors.py`). If that file is absent, nothing changes.
 
-Each cell is transformed first (so IPython magics and `!` shell escapes parse), and its AST is passed to every inspector before the cell executes. An inspector returns a string to prepend a note to the cell's output, raises `clikernel.rules.RuleBlock` to block the cell (it does not run, and the message is reported), or returns None to do nothing. Any other exception from an inspector is treated as an inspector bug: a warning is prepended and the cell still runs. Define a function `inspect(tree)` and/or a list `inspectors` of such functions in the file. A broken `inspectors.py` is reported on stderr and skipped, so it cannot stop the kernel starting.
+Each cell is transformed first (so IPython magics and `!` shell escapes parse), and its AST is passed to every inspector before the cell executes. An inspector returns a string to prepend a note to the cell's output, raises `clikernel.base.RuleBlock` to block the cell (it does not run, and the message is reported), or returns None to do nothing. Any other exception from an inspector is treated as an inspector bug: a warning is prepended and the cell still runs. Define a function `inspect(tree)` and/or a list `inspectors` of such functions in the file. A broken `inspectors.py` is reported on stderr and skipped, so it cannot stop the kernel starting.
 
-See [`examples/inspectors.py`](examples/inspectors.py) for one that blocks `subprocess`, `os.system`/`os.popen`, and `!` escapes, steering the agent to the permission-checked Bash tool instead.
+See [`examples/inspectors.py`](examples/inspectors.py) for one that blocks `subprocess`, `os.system`/`os.popen`, and `!` escapes, steering the agent to the permission-checked Bash tool instead. [llmdojo](https://github.com/AnswerDotAI/llmdojo) builds its live session rules on this hook.
 
 ## Why The Protocol Is Odd
 

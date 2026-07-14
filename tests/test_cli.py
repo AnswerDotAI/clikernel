@@ -293,7 +293,7 @@ def test_cli_tty(tmp_path):
 
 INSPECTORS_SRC = r'''
 import ast
-from clikernel.rules import RuleBlock
+from clikernel.base import RuleBlock
 def inspect(tree):
     for n in ast.walk(tree):
         if isinstance(n, ast.Import) and any(a.name == "subprocess" for a in n.names):

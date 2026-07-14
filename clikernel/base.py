@@ -6,6 +6,10 @@ _MULTILINE = "--"
 _MARKER = "loading complete. session delimiter:"
 
 
+class RuleBlock(Exception):
+    "Raised by an inspector to deliberately block a cell; any other inspector exception is a bug, and fails open"
+
+
 def _new_delim(): return "--" + ''.join(secrets.choice(_ALPHANUM) for _ in range(5))
 
 
