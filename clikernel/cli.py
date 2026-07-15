@@ -87,13 +87,13 @@ def _magic_wrap(fn):
     return magic
 
 def _nbrun_magic(shell):
-    "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to pyskills' current notebook (`set_nb`)"
+    "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to the current notebook (llmsurgery.dlgskill's `set_dlg`)"
     base = _magic_wrap(shell.nbrun)
     def magic(line):
         if '--fname' not in line:
             try:
-                from pyskills.ipynb import cur_nb
-                if (nb := cur_nb()): shell._nbrun_fname = Path(nb)
+                from llmsurgery.dlgskill import cur_dlg
+                if (nb := cur_dlg()): shell._nbrun_fname = Path(nb)
             except ImportError: pass
         return base(line)
     return magic
