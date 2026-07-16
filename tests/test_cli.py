@@ -381,6 +381,7 @@ def test_cli_profile(tmp_path):
 
 PNG1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
 SHOW_IMG = f"import base64; from IPython.display import Image, display; display(Image(base64.b64decode('{PNG1}'))); 'done'"
+MULTI_IMG = f"display({{'image/png': base64.b64decode('{PNG1}'), 'image/jpeg': base64.b64decode('{PNG1}')}}, raw=True); 'done'"
 
 def test_media_flag(tmp_path):
     "Rich outputs stay text-only by default (existing consumers see no change); --media appends <media> elements after the rendered text."
@@ -395,4 +396,6 @@ def test_media_flag(tmp_path):
         read_until_ready(proc)
         out, _ = send(proc, SHOW_IMG + "\n")
         assert "done" in out and f'<media mime="image/png">\n{PNG1}\n</media>' in out
+        out, _ = send(proc, MULTI_IMG + "\n")
+        assert out.count("<media") == 1 and '<media mime="image/png">' in out  # one image per output: preferred mime wins
     finally: stop_kernel(proc)

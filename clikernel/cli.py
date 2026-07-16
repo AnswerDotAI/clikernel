@@ -68,7 +68,9 @@ def _execute(shell, inspectors, code, media=False):
     except Exception as e: note = f"<warn>\ninspector crashed, check skipped ({type(e).__name__}: {e})\n</warn>\n"
     res = shell.run(code)
     out = note + render_text(res)
-    if media: out += ''.join(f'\n<media mime="{m}">\n{d}\n</media>' for m,d in render_media(res) if m in _IMG_MIMES)
+    if media:
+        for ms in (dict(render_media([o])) for o in res):
+            if (m := next((m for m in _IMG_MIMES if m in ms), None)): out += f'\n<media mime="{m}">\n{ms[m]}\n</media>'
     return out
 
 

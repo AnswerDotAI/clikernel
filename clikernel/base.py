@@ -194,7 +194,7 @@ def _errbox(): return "<internal-error>\n" + traceback.format_exc() + "</interna
 
 
 _MEDIA_RE = re.compile(r'\n?<media mime="([^"]+)">\n(.*?)\n</media>', re.S)
-_IMG_MIMES = {'image/png','image/jpeg','image/gif','image/webp'}
+_IMG_MIMES = ('image/png','image/jpeg','image/gif','image/webp')  # preference order for choosing one image per output
 
 def _split_media(body):
     "Split `<media>` elements out of a worker response into `(text, content blocks)`; images only, the rest is dropped"
