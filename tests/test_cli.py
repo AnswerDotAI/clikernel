@@ -241,7 +241,7 @@ def test_cli(tmp_path):
 
         # notebook magics
         nb = make_nb(tmp_path/"t.ipynb")
-        assert "error" not in send(proc, f"%nbopen {nb}\n")[0].lower()
+        assert "error" not in send(proc, f"from llmsurgery.dlgskill import set_dlg; set_dlg('{nb}')\n")[0].lower()
         body, _ = send(proc, "%nbrun aaa\n")
         assert "--- aaa111 ---" in body and "one" in body
         body, _ = send(proc, "%nbrun bbb222 --above\n")
@@ -293,19 +293,22 @@ def test_cli_tty(tmp_path):
 
 INSPECTORS_SRC = r'''
 import ast
+from clikernel.base import RuleBlock
 def inspect(tree):
     for n in ast.walk(tree):
         if isinstance(n, ast.Import) and any(a.name == "subprocess" for a in n.names):
             return "<reminder>\nuse the Bash tool, not subprocess\n</reminder>\n"
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "blockme":
-            raise RuntimeError("blocked by policy")
+            raise RuleBlock("blocked by policy")
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "crashme":
+            raise ValueError("inspector bug")
 def inspect2(tree, src):
     if "MARKER2ARG" in src: return "<reminder>\nsaw the source\n</reminder>\n"
 inspectors = [inspect2]
 '''
 
 def test_cli_inspectors(tmp_path):
-    "Inspectors loaded from XDG inspectors.py: a returned note is prepended to output, and a raising inspector blocks the cell before it runs."
+    "Inspectors loaded from XDG inspectors.py: a returned note is prepended to output, and RuleBlock blocks the cell; any other inspector exception fails open."
     xdg = tmp_path/"xdg"
     (xdg/"clikernel").mkdir(parents=True)
     (xdg/"clikernel"/"inspectors.py").write_text(INSPECTORS_SRC)
@@ -319,6 +322,9 @@ def test_cli_inspectors(tmp_path):
         assert "blocked by policy" in body and "NameError" not in body  # blocked before running
         body, _ = send(proc, "x = 'MARKER2ARG'\n")
         assert "saw the source" in body                            # two-arg inspectors also receive the raw cell source
+        send(proc, "crashme = lambda: 42\n")                       # no Call node: inspector stays quiet
+        body, _ = send(proc, "crashme()\n")
+        assert "42" in body and "inspector bug" in body and "blocked" not in body  # inspector crash fails open: warn + cell still runs
     finally: stop_kernel(proc)
 
 
@@ -339,6 +345,7 @@ def test_cli_startup(tmp_path):
         assert send(proc, "GREETING\n")[0] == "'hi from startup'\n"      # name defined at startup persists
         assert send(proc, "reduce(lambda a,b:a+b, [1,2,3])\n")[0] == "6\n"  # import from startup persists
         assert send(proc, "STARTUP_FILE\n")[0] == repr(str(sp)) + "\n"  # startup runs as a file, with its path available
+        assert send(proc, "'__file__' in globals()\n")[0] == "False\n"  # ...but %run's __file__ doesn't leak into the session
     finally: stop_kernel(proc)
 
     (xdg/"clikernel"/"startup.py").write_text("SILENT = 1\n")             # imports/defs but prints nothing

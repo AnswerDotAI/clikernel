@@ -4,7 +4,7 @@
 
 `clikernel` exposes one long-lived IPython process (wrapping `execnb.shell.CaptureShell`) that runs Python/IPython code and keeps state across the whole conversation: imports, live objects, monkeypatches, cached results, API clients, small experiments. Treat it as a notebook-style workbench, not a one-shot script runner.
 
-Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search goes through the `rgapi` pyskill (`rg()`/`fd()`), and GitHub work (PRs, issues, CI status) through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for local git operations, project test/build commands, and non-Python tools.
+Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search and directory listing go through the `rgapi` pyskill (`rg()`/`fd()`/`ls()`), and GitHub work (PRs, issues, CI status) through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for local git operations, project test/build commands, and non-Python tools.
 
 There are two ways to drive it, depending on what the host supports:
 
@@ -49,16 +49,15 @@ To end the session, send `exit`. In CLI mode there is no `restart` tool -- start
 
 # Notebook magics
 
-`execute` runs IPython, not plain Python, so magics work as written. Two line magics run cells from a `.ipynb` file by cell id prefix:
+`execute` runs IPython, not plain Python, so magics work as written. The `%nbrun` line magic runs cells from a `.ipynb` file by cell id prefix:
 
-    %nbopen foo.ipynb
     %nbrun ab12
     %nbrun ab12 cd34 ef56
     %nbrun ab12 --above
     %nbrun --all --exported
     %nbrun ab12 --fname other.ipynb
 
-`%nbopen` sets the default notebook for later `%nbrun` calls (passing `--fname` does too). `%nbrun` takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, and `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive. The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state, and `restart` clears the `%nbopen` default.
+`%nbrun` targets the current notebook (`set_dlg(fname)` from `llmsurgery.dlgskill`), so the same registration covers editing tools and cell running alike; `--fname` overrides for one call. It takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive, and `--skip_noeval` skips `#| eval: false` and `nbdev_export` cells (use it with `--above`/`--all` in nbdev repos, where such cells often hit live services). The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state; `restart` clears the current notebook along with everything else.
 
 Prefer these magics over copying cell source into `execute` by hand when working through a notebook -- e.g. after editing a cell, `%nbrun <id>` re-runs it in place, and `%nbrun <id> --above` rebuilds the state it depends on.
 
