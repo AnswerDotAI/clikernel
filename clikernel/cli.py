@@ -2,7 +2,7 @@ import ast,inspect,os,runpy,shlex,sys,traceback
 from pathlib import Path
 from fastcore.xdg import xdg_config_home
 from clikernel import INSTRUCTIONS
-from clikernel.base import _IMG_MIMES,RuleBlock,fmt_error,init_worker,run_startup,serve_stream
+from clikernel.base import RuleBlock,fmt_error,init_worker,run_startup,serve_stream
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()
@@ -62,16 +62,11 @@ def _inspect(shell, inspectors, code):
 
 
 def _execute(shell, inspectors, code, media=False):
-    from fastcore.nbio import render_text,render_media
+    from fastcore.nbio import render_text
     try: note = _inspect(shell, inspectors, code)
     except RuleBlock as e: return fmt_error("blocked", str(e))
     except Exception as e: note = f"<warn>\ninspector crashed, check skipped ({type(e).__name__}: {e})\n</warn>\n"
-    res = shell.run(code)
-    out = note + render_text(res)
-    if media:
-        for ms in (dict(render_media([o])) for o in res):
-            if (m := next((m for m in _IMG_MIMES if m in ms), None)): out += f'\n<media mime="{m}">\n{ms[m]}\n</media>'
-    return out
+    return note + render_text(shell.run(code), include_imgs=media)
 
 
 def _request_exit(shell): shell._clikernel_exit = True

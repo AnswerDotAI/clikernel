@@ -193,14 +193,14 @@ class _Worker:
 def _errbox(): return "<internal-error>\n" + traceback.format_exc() + "</internal-error>"
 
 
-_MEDIA_RE = re.compile(r'\n?<media mime="([^"]+)">\n(.*?)\n</media>', re.S)
-_IMG_MIMES = ('image/png','image/jpeg','image/gif','image/webp')  # preference order for choosing one image per output
+_IMG_MIMES = ('image/png','image/jpeg')  # mimes forwarded as MCP image blocks; others (e.g. svg) stay in the text
+_MEDIA_RE = re.compile(r'\n?<(display_data|execute_result) mime="(%s)">\n(.*?)\n</\1>' % '|'.join(_IMG_MIMES), re.S)
 
 def _split_media(body):
-    "Split `<media>` elements out of a worker response into `(text, content blocks)`; images only, the rest is dropped"
+    "Split image output elements out of a worker response into `(text, content blocks)`"
     from mcp.types import ImageContent
     parts = _MEDIA_RE.findall(body)
-    blocks = [ImageContent(type='image', data=d, mimeType=m) for m,d in parts if m in _IMG_MIMES]
+    blocks = [ImageContent(type='image', data=d, mimeType=m) for _,m,d in parts]
     return (_MEDIA_RE.sub('', body) if parts else body), blocks
 
 
@@ -261,7 +261,7 @@ async def _serve(w, name, docs, instructions=None, eager=False):
                 if body is None:
                     return note + "<internal-error>\nkernel process died while executing this request; a fresh kernel will be started on the next call, with all session state lost\n</internal-error>"
                 text, blocks = _split_media(note + body)
-                return [text, *blocks] if blocks else text
+                return [*([text] if text.strip() else []), *blocks] if blocks else text
         except Exception:
             w.desynced = True
             return _errbox()

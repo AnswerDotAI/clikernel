@@ -170,7 +170,7 @@ async def test_mcp_media():
     async with stdio_client(_server_params()) as (r, w), ClientSession(r, w) as s:
         await s.initialize()
         res = await s.call_tool("execute", {"code": f"import base64; from IPython.display import Image, display; display(Image(base64.b64decode('{PNG1}'))); 'done'"})
-        assert res.content[0].type == "text" and "done" in res.content[0].text and "<media" not in res.content[0].text
+        assert res.content[0].type == "text" and "done" in res.content[0].text and PNG1 not in res.content[0].text
         img = next(c for c in res.content if c.type == "image")
         assert img.mimeType == "image/png" and img.data == PNG1
         assert await _text(s, "execute", code="40+2") == "42"
