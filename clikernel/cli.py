@@ -93,7 +93,7 @@ def _nbrun_magic(shell):
         if '--fname' not in line:
             try:
                 from llmsurgery.dlgskill import cur_dlg
-                if (nb := cur_dlg()): shell._nbrun_fname = Path(nb)
+                if (dlg := cur_dlg()): shell._nbrun_fname = dlg.path_
             except ImportError: pass
         return base(line)
     return magic
