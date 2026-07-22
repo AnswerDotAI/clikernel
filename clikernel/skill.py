@@ -6,46 +6,11 @@
 
 Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search and directory listing go through the `rgapi` pyskill (`rg()`/`fd()`/`ls()`), and GitHub work (PRs, issues, CI status) through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for local git operations, project test/build commands, and non-Python tools.
 
-There are two ways to drive it, depending on what the host supports:
-
-- **MCP server** (`clikernel-mcp`): no delimiter protocol, stdin plumbing, or readiness polling to manage -- call one tool, get back the rendered outputs.
-- **CLI** (`clikernel`): a plain stdin/stdout process using a delimiter protocol, for hosts that drive background terminal sessions instead of MCP tools.
+Normally the harness drives it as an MCP server (`clikernel-mcp`). Driven instead as a plain CLI process, `clikernel` documents its delimiter protocol in its own startup banner.
 
 # MCP tools
 
 `execute`, `restart`, and `interrupt` are self-documenting -- read each tool's own MCP description rather than looking for docs elsewhere. `restart` gives a genuinely fresh interpreter process (new pid, `sys.modules` reset); `interrupt` stops a too-long-running `execute` while keeping session state.
-
-# CLI protocol
-
-When driven as a plain process, `clikernel` prints loading status followed by a random session delimiter -- always `--` plus 5 alphanumeric characters:
-
-    please wait, loading...
-    loading complete. session delimiter:
-    --aB3x9
-
-Any startup warnings print before the session delimiter. Treat that delimiter as the readiness signal, completion signal, and multiline terminator; it stays the same until the process exits.
-
-Send a single line to execute a single-line request. `clikernel` first prints an acknowledgement line (`.`) -- that means request *accepted*, not execution complete -- then the response body, then the session delimiter:
-
-    1+1
-    .
-    2
-    --aB3x9
-
-Use a bare `--` line to start multiline input -- required for ANY multi-line cell, including `%%` cell magics (sent one-line, a magic gets an empty body) -- ending the block with the session delimiter exactly:
-
-    --
-    def f(x):
-        return x + 1
-
-    f(2)
-    --aB3x9
-
-Do not look for an IPython prompt, do not use `%cpaste`, and do not invent your own terminator. A blank line is a real (empty) request, so it makes a good idle-poll: an idle kernel answers with `.` and the delimiter; if that doesn't come back quickly, the previous request is still running or the process is wedged.
-
-Python exceptions render as normal notebook error output. Protocol/worker failures render with readable XML-ish error tags, then the session delimiter.
-
-To end the session, send `exit`. In CLI mode there is no `restart` tool -- starting a fresh process *is* the restart, and gives a genuinely fresh interpreter (the equivalent of the MCP `restart` tool).
 
 # Notebook magics
 
@@ -57,9 +22,18 @@ To end the session, send `exit`. In CLI mode there is no `restart` tool -- start
     %nbrun --all --exported
     %nbrun ab12 --fname other.ipynb
 
-`%nbrun` targets the current notebook (`set_dlg(fname)` from `llmsurgery.dlgskill`), so the same registration covers editing tools and cell running alike; `--fname` overrides for one call. It takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive, and `--skip_noeval` skips `#| eval: false` and `nbdev_export` cells (use it with `--above`/`--all` in nbdev repos, where such cells often hit live services). The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state; `restart` clears the current notebook along with everything else.
+`%nbrun` targets the current notebook (`set_dlg(fname)` from `llmsurgery.dlgskill`), so the same registration covers editing tools and cell running alike; `--fname` overrides for one call. It takes one or more cell id prefixes and runs each matching cell in the order given; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, `--exported` filters to cells carrying an nbdev `#| export`/`#| exports` directive, and `--skip_noeval` skips `#| eval: false` and `nbdev_export` cells (use it with `--above`/`--all` in nbdev repos, where such cells often hit live services). The run stops at the first cell that errors, unless `--continue_on_error` is passed. The notebook is re-read from disk on each call, so file edits are picked up; each executed cell's output is printed under a `--- {cell id} ---` header. Cell execution shares the persistent session state; `restart` clears the current notebook along with everything else.
 
 Prefer these magics over copying cell source into `execute` by hand when working through a notebook -- e.g. after editing a cell, `%nbrun <id>` re-runs it in place, and `%nbrun <id> --above` rebuilds the state it depends on.
+
+# nbdev projects
+
+In nbdev repos (notebooks in `nbs/` are the source of truth; `doc(nbdev.skill)` covers authoring style), a few kernel-specific rules apply:
+
+- Export with a shell `nbdev-export` run from the project directory, not the in-kernel `nbdev_export()`. A full export is near-instant, so don't scope it with `--path`/`--file_re` - partial exports leave sibling modules stale. A notebook edit is invisible to installed code until export.
+- Run notebook tests with a shell `nbdev-test --path /abs/path/nbs/foo.ipynb`, not in-kernel `test_nb`: the persistent kernel isn't the main thread, so signal-based cell timeouts can't work there, and a separate process can't pollute session state. For several notebooks in one parallel run, pass a directory plus `--file_glob` (`--path` takes one path and does not brace-expand).
+- After exporting a change to an already-imported module, you may need to restart instead of reload. Other modules can retain stale references created by `from x import ...`, and `@patch` methods can remain attached to older class objects. Restart when the exported change could encounter either case.
+- Work red-green with `%nbrun`: run the new test cell to see it fail, edit, export, re-run to see it pass.
 
 # Output shape
 
@@ -80,6 +54,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
 - For file-editing workflows, view the target slice first and make the smallest verified edit -- avoid whole-file rewrites when a line/range/string operation is enough.
 - Default to raw triple-quoted strings (`r'''...'''`) for generated markdown, code, regexes, commands, or other source-like text, since backslashes usually need to survive intact. Use normal triple-quoted strings only when Python's own escape processing is what you want. For risky multiline content, verify with `repr(...)` or a focused readback before writing broadly.
 - Lean on reprs: many objects returned by libraries in this ecosystem (pyskills results especially) have reprs designed for direct reading. End a cell with the bare expression instead of writing a loop to reformat fields by hand -- only drop to attribute access when the repr genuinely omits what you need.
+- To inspect a runtime object, prefer `info_md` from `ipykernel_helper` (where installed) over `inspect.getsource`: `info_md(obj)` is IPython's `?` (signature, docstring, file/line, type) and `info_md(obj, source=True)` is `??` (full source + location). The file:line it reports leads straight to the defining module or notebook cell.
 
 # Critical issues
 

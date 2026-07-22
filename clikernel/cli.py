@@ -18,13 +18,10 @@ def _set_default_dirs():
 
 
 def _load_inspectors():
-    "Cell inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py`: each is called with the cell AST before execution, and may return a note (prepended to the output) or raise `RuleBlock` (blocking the cell); any other exception is an inspector bug, noted without blocking. The file may define `inspect` and/or an `inspectors` list."
+    "Cell inspectors from `$XDG_CONFIG_HOME/clikernel/inspectors.py`: each is called with the cell AST before execution, and may return a note (prepended to the output) or raise `RuleBlock` (blocking the cell); any other exception is an inspector bug, noted without blocking. The file may define `inspect` and/or an `inspectors` list. A file that fails to load is fatal: refusing to start beats running uninspected."
     path = xdg_config_home()/"clikernel"/"inspectors.py"
     if not path.exists(): return []
-    try: ns = runpy.run_path(str(path))
-    except Exception:
-        print(f"clikernel: failed to load {path}:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
-        return []
+    ns = runpy.run_path(str(path))
     ins = list(ns.get("inspectors", []))
     if callable(ns.get("inspect")): ins.append(ns["inspect"])
     return ins
@@ -88,12 +85,15 @@ def _magic_wrap(fn):
 
 def _nbrun_magic(shell):
     "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to the current notebook (llmsurgery.dlgskill's `set_dlg`)"
-    base = _magic_wrap(shell.nbrun)
+    def nbrun(*msgids, fname=None, above:bool=False, below:bool=False, all:bool=False, exported:bool=False, skip_noeval:bool=False, continue_on_error:bool=False):
+        "`shell.nbrun` with its stop-on-error default inverted, since `--` bool flags can only turn a default off"
+        shell.nbrun(*msgids, fname=fname, above=above, below=below, all=all, exported=exported, skip_noeval=skip_noeval, stop_on_error=not continue_on_error)
+    base = _magic_wrap(nbrun)
     def magic(line):
         if '--fname' not in line:
             try:
                 from llmsurgery.dlgskill import cur_dlg
-                if (nb := cur_dlg()): shell._nbrun_fname = Path(nb)
+                if (dlg := cur_dlg()): shell._nbrun_fname = dlg.path_
             except ImportError: pass
         return base(line)
     return magic

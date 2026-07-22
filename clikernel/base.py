@@ -91,9 +91,10 @@ def serve_stream(
     echo_state = _tty_clear(sys.stdin, tty.LFLAG, termios.ECHO | termios.ICANON, {termios.VMIN: 1, termios.VTIME: 0})
     delim = _new_delim()
     print(info, flush=True)
-    print(f"<stream-protocol>\nOne-line request: send the line; every response ends with the session delimiter line.\n"
+    print(f"<stream-protocol>\nOne-line request: send the line. Each response is an acknowledgement line '.' (request accepted, not complete), the rendered output, then the session delimiter line.\n"
         f"Multiline request (any multi-line cell, including %% cell magics), shown indented -- send it flush-left:\n"
-        f"    --\n    <complete cell>\n    {delim}\ndoc(clikernel.skill) documents the full protocol.\n</stream-protocol>", flush=True)
+        f"    --\n    <complete cell>\n    {delim}\n"
+        f"No IPython prompt, no %cpaste, no invented terminators. A blank line is an empty request, so it doubles as an idle poll. Send 'exit' to end; a fresh process is the restart.\n</stream-protocol>", flush=True)
     print(_MARKER, flush=True)
     _write_response(delim)
     try:

@@ -165,7 +165,10 @@ def read_pty_raw_until_ready(proc, timeout=TIMEOUT):
 
 NB_CELLS = [("aaa111", "x = 41\nprint('one')"),
     ("bbb222", "#| export\nprint('two', x + 1)"),
-    ("ccc333", "print('three')")]
+    ("ccc333", "print('three')"),
+    ("ddd444", "no_a"),
+    ("eee555", "no_b"),
+    ("fff666", "print('four')")]
 
 def make_nb(path):
     cells = [dict(cell_type="code", id=i, metadata={}, outputs=[], execution_count=None, source=src) for i,src in NB_CELLS]
@@ -249,6 +252,13 @@ def test_cli(tmp_path):
         body, _ = send(proc, "%nbrun --all --exported\n")
         assert "two 42" in body and "one" not in body and "three" not in body
 
+        # stop on error: the failing cell's traceback shows, later cells never run
+        body, _ = send(proc, "%nbrun fff666 --above\n")
+        assert body.count("Traceback") == 1 and "no_a" in body
+        assert "eee555" not in body and "four" not in body
+        body, _ = send(proc, "%nbrun fff666 --above --continue_on_error\n")
+        assert body.count("Traceback") == 2 and "no_b" in body and "four" in body
+
         # exit(): empty body, final delimiter, clean stop
         body, nd = send(proc, "exit()\n")
         assert body == "" and nd == delim
@@ -327,6 +337,18 @@ def test_cli_inspectors(tmp_path):
         assert "42" in body and "inspector bug" in body and "blocked" not in body  # inspector crash fails open: warn + cell still runs
     finally: stop_kernel(proc)
 
+
+def test_cli_broken_inspectors(tmp_path):
+    "A broken inspectors.py kills the kernel at startup: running uninspected is worse than not running."
+    xdg = tmp_path/"xdg"
+    (xdg/"clikernel").mkdir(parents=True)
+    (xdg/"clikernel"/"inspectors.py").write_text("import missing_module_xyz\n")
+    proc = start_kernel(tmp_path, {"XDG_CONFIG_HOME": str(xdg)})
+    try:
+        out, err = proc.communicate(timeout=TIMEOUT)
+        assert proc.returncode != 0
+        assert "missing_module_xyz" in err.decode()
+    finally: stop_kernel(proc)
 
 STARTUP_SRC = "from functools import reduce  # SRC-ONLY-TOKEN\nprint('STARTUP-STDOUT-MARKER')\nGREETING = 'hi from startup'\nSTARTUP_FILE = __file__\n"
 
