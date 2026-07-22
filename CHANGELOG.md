@@ -1,5 +1,16 @@
 <!-- do not remove -->
 
+## 0.1.7
+
+### New Features
+
+- Clarify %nbrun stop-on-error semantics, make broken inspectors fatal, and expand nbdev/inspect-runtime guidance ([#20](https://github.com/AnswerDotAI/clikernel/issues/20))
+- Replace %nbopen with pyskills notebook integration, add RuleBlock fail-open inspectors, new s-command rules, dojo completion API and refusal messages, and host-based doced state ([#18](https://github.com/AnswerDotAI/clikernel/issues/18))
+- Run startup.py via `%run -i` so `__file__` is set ([#17](https://github.com/AnswerDotAI/clikernel/issues/17))
+- Improve orient kata feedback to name only missing cell ids and clarify import-cell ruling ([#15](https://github.com/AnswerDotAI/clikernel/issues/15))
+- Add stream-protocol banner, read-only kata support, paused-ledger dojo flow, `dojo_resume`, fastcore doc exemption, and displayed-read-only context rule ([#14](https://github.com/AnswerDotAI/clikernel/issues/14))
+
+
 ## 0.1.6
 
 ### New Features
@@ -55,4 +66,3 @@
 ## 0.1.0
 
 - Initial release
-
