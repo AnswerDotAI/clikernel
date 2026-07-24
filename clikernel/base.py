@@ -133,8 +133,8 @@ TOOL_DOCS = dict(
 
 
 class _Worker:
-    def __init__(self, argv=None):
-        self.argv = argv or [sys.executable, "-m", "clikernel.cli"]
+    def __init__(self, argv=None, media=False):
+        self.argv = argv or [sys.executable, "-m", "clikernel.cli"] + (["--media"] if media else [])
         self.proc,self.delim,self.started,self.busy,self.desynced = None,None,False,False,False
         self.startup_info = ""
         self.lock = asyncio.Lock()
@@ -194,6 +194,17 @@ class _Worker:
 def _errbox(): return "<internal-error>\n" + traceback.format_exc() + "</internal-error>"
 
 
+_IMG_MIMES = ('image/png','image/jpeg')  # mimes forwarded as MCP image blocks; others (e.g. svg) stay in the text
+_MEDIA_RE = re.compile(r'\n?<(display_data|execute_result) mime="(%s)">\n(.*?)\n</\1>' % '|'.join(_IMG_MIMES), re.S)
+
+def _split_media(body):
+    "Split image output elements out of a worker response into `(text, content blocks)`"
+    from mcp.types import ImageContent
+    parts = _MEDIA_RE.findall(body)
+    blocks = [ImageContent(type='image', data=d, mimeType=m) for _,m,d in parts]
+    return (_MEDIA_RE.sub('', body) if parts else body), blocks
+
+
 def _kill_worker(w, grace=3):
     "Reap the worker child so it can never outlive the supervisor (signal-handler safe: no await); SIGTERM first so it can clean up, SIGKILL if it lingers"
     p = w.proc
@@ -235,7 +246,7 @@ async def _serve(w, name, docs, instructions=None, eager=False):
     died = docs['died']
 
     async def execute(code:str  # Code to run in the persistent session
-                     )->str:   # Rendered outputs (stdout, display data, last-expression result, errors)
+                     ):        # Rendered outputs (stdout, display data, last-expression result, errors), plus any rich media blocks
         try:
             async with w.lock:
                 note = ""
@@ -250,7 +261,8 @@ async def _serve(w, name, docs, instructions=None, eager=False):
                     acked, body = await w.run(code)
                 if body is None:
                     return note + "<internal-error>\nkernel process died while executing this request; a fresh kernel will be started on the next call, with all session state lost\n</internal-error>"
-                return note + body
+                text, blocks = _split_media(note + body)
+                return [*([text] if text.strip() else []), *blocks] if blocks else text
         except Exception:
             w.desynced = True
             return _errbox()
@@ -280,9 +292,10 @@ def run_mcp(
     name='clikernel',  # MCP server name
     docs=None,         # Overrides for `TOOL_DOCS` entries (tool descriptions and the state-lost note)
     instructions=None, # Static MCP `instructions` text, for when the worker isn't started eagerly
-    eager=False        # Start the worker at server startup, forwarding its banner (with startup output) as `instructions`?
+    eager=False,       # Start the worker at server startup, forwarding its banner (with startup output) as `instructions`?
+    media=True,        # Forward rich display outputs (images) from the worker as MCP content blocks?
 ):
     "Run an MCP server supervising a persistent stream-protocol worker subprocess."
-    w = _Worker(argv)
+    w = _Worker(argv, media=media)
     _install_signal_guards(w)
     asyncio.run(_serve(w, name, {**TOOL_DOCS, **(docs or {})}, instructions, eager))

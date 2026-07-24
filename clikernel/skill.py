@@ -46,7 +46,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
     42
     </execute_result>
 
-`display_data`/`execute_result` prefer a non-image, markdown-over-HTML representation; images are ignored. Exceptions come back as a single clean `<error>` traceback -- no color codes, not duplicated.
+`display_data`/`execute_result` prefer a non-image, markdown-over-HTML representation; image display outputs are forwarded to MCP clients as media content blocks (text-only for other consumers, unless the worker runs with `--media`). Exceptions come back as a single clean `<error>` traceback -- no color codes, not duplicated.
 
 # Interaction rules
 
@@ -63,6 +63,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
 - `importlib.reload`ing a module is not always enough to pick up a change: other already-imported modules that did `from x import *`, or that monkeypatched one of its classes (e.g. via fastcore's `@patch`), hold stale references that a targeted reload won't fix. If you hit a stale-class symptom (a class missing a method you know it has, `isinstance` mysteriously failing), you need a fresh interpreter process: the MCP `restart` tool, or in CLI mode, exit and start a new process.
 - Everything a cell outputs lands in the conversation and stays there. Be surgical: inspect only what's needed, and don't dump large values -- `print(len(v))` first, then decide whether to print in full or filter down.
 - The kernel is scoped to one client session and shared by any subagents within it. If the server restarts or exits, in-memory state is gone -- redo imports and setup.
+- If the host conversation survived a kernel restart and the relevant `doc()` output is still visible, call `doced(name1, name2, ...)` to restore doc state without reprinting it. After context compaction, call `forget_doced()` and read the docs again.
 
 # Pyskills
 

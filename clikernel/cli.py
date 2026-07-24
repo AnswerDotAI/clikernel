@@ -58,12 +58,12 @@ def _inspect(shell, inspectors, code):
     return "".join(note for f in inspectors if (note := _call_inspector(f, tree, code)))
 
 
-def _execute(shell, inspectors, code):
+def _execute(shell, inspectors, code, media=False):
     from fastcore.nbio import render_text
     try: note = _inspect(shell, inspectors, code)
     except RuleBlock as e: return fmt_error("blocked", str(e))
     except Exception as e: note = f"<warn>\ninspector crashed, check skipped ({type(e).__name__}: {e})\n</warn>\n"
-    return note + render_text(shell.run(code))
+    return note + render_text(shell.run(code), include_imgs=media)
 
 
 def _request_exit(shell): shell._clikernel_exit = True
@@ -124,7 +124,7 @@ def main():
     shell = _make_shell()
     block = _startup_block(shell)
     inspectors = _load_inspectors()
-    serve_stream(lambda code: _execute(shell, inspectors, code),
+    serve_stream(lambda code: _execute(shell, inspectors, code, media="--media" in sys.argv[1:]),
         INSTRUCTIONS + ("\n\n" + block if block else ""), should_exit=lambda: _should_exit(shell))
 
 
