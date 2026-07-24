@@ -244,7 +244,7 @@ def test_cli(tmp_path):
 
         # notebook magics
         nb = make_nb(tmp_path/"t.ipynb")
-        assert "error" not in send(proc, f"from llmsurgery.dlgskill import set_dlg; set_dlg('{nb}')\n")[0].lower()
+        assert "error" not in send(proc, f"from aidialog.dlgskill import set_dlg; set_dlg('{nb}')\n")[0].lower()
         body, _ = send(proc, "%nbrun aaa\n")
         assert "--- aaa111 ---" in body and "one" in body
         body, _ = send(proc, "%nbrun bbb222 --above\n")

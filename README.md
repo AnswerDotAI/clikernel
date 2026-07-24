@@ -67,7 +67,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output
 %nbrun ab12 --fname other.ipynb
 ```
 
-`%nbrun` defaults to the current notebook (set with `llmsurgery.dlgskill`'s `set_dlg`) when llmsurgery is installed; `--fname` overrides for one call. It runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, `--exported` filters to cells with an nbdev `#| export`/`#| exports` directive, and `--skip_noeval` skips `#| eval: false` and `nbdev_export` cells. The run stops at the first cell that errors, unless `--continue_on_error` is passed. The notebook is re-read from disk on each call, and each executed cell's rendered output is printed under a `--- {cell id} ---` header.
+`%nbrun` defaults to the current notebook (set with `aidialog.dlgskill`'s `set_dlg`) when aidialog is installed; `--fname` overrides for one call. It runs the cell whose id starts with the given prefix; `--above`/`--below` also run the cells before/after it, `--all` runs every code cell, `--exported` filters to cells with an nbdev `#| export`/`#| exports` directive, and `--skip_noeval` skips `#| eval: false` and `nbdev_export` cells. The run stops at the first cell that errors, unless `--continue_on_error` is passed. The notebook is re-read from disk on each call, and each executed cell's rendered output is printed under a `--- {cell id} ---` header.
 
 `clikernel` sets quiet defaults for `IPYTHONDIR`, `MPLCONFIGDIR`, and `MPLBACKEND=Agg` before creating the shell. Existing `IPYTHONDIR` and `MPLCONFIGDIR` values are left alone. Loading messages and any startup warnings are printed before the session delimiter. Set `CLIKERNEL_STATE_DIR` to choose the default parent directory.
 

@@ -84,7 +84,7 @@ def _magic_wrap(fn):
     return magic
 
 def _nbrun_magic(shell):
-    "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to the current notebook (llmsurgery.dlgskill's `set_dlg`)"
+    "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to the current notebook (aidialog.dlgskill's `set_dlg`)"
     def nbrun(*msgids, fname=None, above:bool=False, below:bool=False, all:bool=False, exported:bool=False, skip_noeval:bool=False, continue_on_error:bool=False):
         "`shell.nbrun` with its stop-on-error default inverted, since `--` bool flags can only turn a default off"
         shell.nbrun(*msgids, fname=fname, above=above, below=below, all=all, exported=exported, skip_noeval=skip_noeval, stop_on_error=not continue_on_error)
@@ -92,7 +92,7 @@ def _nbrun_magic(shell):
     def magic(line):
         if '--fname' not in line:
             try:
-                from llmsurgery.dlgskill import cur_dlg
+                from aidialog.dlgskill import cur_dlg
                 if (dlg := cur_dlg()): shell._nbrun_fname = dlg.path_
             except ImportError: pass
         return base(line)
