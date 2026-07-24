@@ -16,14 +16,14 @@ def _emit(obj):
 
 def _do_exec(shell, req):
     rid = req.get('id')
-    for o in shell.run(req['code']): _emit({'ev':'out','id':rid,'output':o})
+    for o in shell.run(req['code']): _emit(dict(ev='out', id=rid, output=o))
     _emit({'ev':'done','id':rid})
 
 def _do_complete(shell, req):
     line, pos = req['code'], req.get('pos', len(req['code']))
     try: text, matches = shell.Completer.complete(line_buffer=line, cursor_pos=pos)
     except Exception: text, matches = '', []
-    _emit({'ev':'completions','id':req.get('id'),'matches':matches,'start':pos - len(text or '')})
+    _emit(dict(ev='completions', id=req.get('id'), matches=matches, start=pos - len(text or '')))
 
 def main():
     signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -41,14 +41,14 @@ def main():
         try:
             if op == 'exec': _do_exec(shell, req)
             elif op == 'complete': _do_complete(shell, req)
-            else: _emit({'ev':'protocol-error','id':req.get('id'),'error':f'unknown op {op!r}'})
-        except KeyboardInterrupt: _emit({'ev':'done','id':req.get('id'),'interrupted':True})
+            else: _emit(dict(ev='protocol-error', id=req.get('id'), error=f'unknown op {op!r}'))
+        except KeyboardInterrupt: _emit(dict(ev='done', id=req.get('id'), interrupted=True))
 
 class StreamWorker:
     "Drive a `clikernel.stream` worker subprocess: non-blocking `pump` for select loops, SIGINT interrupt."
     def __init__(self, argv=None):
         self.proc = subprocess.Popen(argv or [sys.executable,'-m','clikernel.stream'],
-                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
         self._buf = b''
         self._next = 1
         self.busy = None  # id of the in-flight exec, or None

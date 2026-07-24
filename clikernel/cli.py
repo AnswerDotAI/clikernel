@@ -1,4 +1,4 @@
-import ast,inspect,os,runpy,shlex,sys,traceback
+import ast, inspect, os, runpy, shlex, traceback
 from pathlib import Path
 from fastcore.xdg import xdg_config_home
 from clikernel import INSTRUCTIONS
@@ -85,7 +85,8 @@ def _magic_wrap(fn):
 
 def _nbrun_magic(shell):
     "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to the current notebook (aidialog.dlgskill's `set_dlg`)"
-    def nbrun(*msgids, fname=None, above:bool=False, below:bool=False, all:bool=False, exported:bool=False, skip_noeval:bool=False, continue_on_error:bool=False):
+    def nbrun(*msgids, fname=None, above:bool=False, below:bool=False, all:bool=False, exported:bool=False,
+        skip_noeval:bool=False, continue_on_error:bool=False):
         "`shell.nbrun` with its stop-on-error default inverted, since `--` bool flags can only turn a default off"
         shell.nbrun(*msgids, fname=fname, above=above, below=below, all=all, exported=exported, skip_noeval=skip_noeval, stop_on_error=not continue_on_error)
     base = _magic_wrap(nbrun)
