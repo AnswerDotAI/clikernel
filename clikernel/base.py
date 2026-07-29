@@ -223,7 +223,8 @@ def _install_signal_guards(w):
 
 
 async def _serve(w, name, docs, instructions=None, eager=False):
-    from mcp.server.fastmcp import FastMCP
+    try: from mcp.server.mcpserver import MCPServer as FastMCP  # mcp>=2 renamed FastMCP
+    except ImportError: from mcp.server.fastmcp import FastMCP  # mcp 1.x
     # When `eager`, start the worker before building the server so its banner (including startup output) is
     # forwarded as the `instructions` field -- read once, at initialize; a later restart won't refresh what the
     # client sees. Otherwise the worker stays unlaunched until first use and `instructions` is the static text.
