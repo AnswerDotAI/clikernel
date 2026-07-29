@@ -169,10 +169,11 @@ def _free_port():
         return s.getsockname()[1]
 
 
-def _post(url, token=None):
+def _post(url, token=None, host=None):
     "POST to `url`, returning the HTTP status (auth is checked before MCP parses anything)"
     hdrs = {"Content-Type": "application/json"}
     if token: hdrs["Authorization"] = f"Bearer {token}"
+    if host: hdrs["Host"] = host
     req = urllib.request.Request(url, data=b"{}", headers=hdrs)
     try: return urllib.request.urlopen(req, timeout=10).status
     except urllib.error.HTTPError as e: return e.code
@@ -194,6 +195,8 @@ async def test_http_auth(tmp_path):
             except OSError: await asyncio.sleep(0.1)
         assert await asyncio.to_thread(_post, url) == 401                   # no token
         assert await asyncio.to_thread(_post, url, "wrong-token") == 401    # wrong token
+        assert await asyncio.to_thread(_post, url, tok, "example.com") \
+            == await asyncio.to_thread(_post, url, tok)                 # a foreign Host is not the server's business: it binds a public interface
         async with create_mcp_http_client(headers={"Authorization": f"Bearer {tok}"}) as hc, \
                 streamable_http_client(url, http_client=hc) as streams, \
                 ClientSession(*streams[:2]) as s:   # mcp 2.x drops the session-id callback from the tuple

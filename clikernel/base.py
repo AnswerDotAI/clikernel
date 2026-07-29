@@ -234,6 +234,15 @@ def _auth_app(app, token):
     return _f
 
 
+def _http_app(mcp):
+    "The streamable-http ASGI app, with the SDK's localhost-only Host check off: the bearer token is what guards this server, and it serves through proxies and public domains"
+    from mcp.server.transport_security import TransportSecuritySettings
+    sec = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    try: return mcp.streamable_http_app(transport_security=sec)  # mcp>=2
+    except TypeError:                                            # mcp 1.x reads it off the server instead
+        mcp.settings.transport_security = sec
+        return mcp.streamable_http_app()
+
 
 async def _serve(w, name, docs, instructions=None, eager=False, transport='stdio', host='127.0.0.1', port=8000, token=None):
     try: from mcp.server.mcpserver import MCPServer as FastMCP  # mcp>=2 renamed FastMCP
@@ -288,7 +297,7 @@ async def _serve(w, name, docs, instructions=None, eager=False, transport='stdio
         mcp.tool(structured_output=False)(f)
     if transport == 'stdio': return await mcp.run_stdio_async()
     import uvicorn
-    cfg = uvicorn.Config(_auth_app(mcp.streamable_http_app(), token), host=host, port=port, log_level='warning')
+    cfg = uvicorn.Config(_auth_app(_http_app(mcp), token), host=host, port=port, log_level='warning')
     await uvicorn.Server(cfg).serve()
 
 
