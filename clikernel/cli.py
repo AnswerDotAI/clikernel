@@ -3,6 +3,10 @@ from pathlib import Path
 from fastcore.xdg import xdg_config_home
 from clikernel import INSTRUCTIONS
 from clikernel.base import RuleBlock,fmt_error,init_worker,run_startup,serve_stream
+from IPython.core.ultratb import FormattedTB
+
+# Context, not Verbose: Verbose adds frame locals, which echoes a big payload a second time
+_TB = FormattedTB(mode='Context', theme_name='nocolor')
 
 def _state_root():
     if d := os.environ.get("CLIKERNEL_STATE_DIR"): return Path(d).expanduser()
@@ -31,6 +35,42 @@ def _stream_text(outputs):
     "Concatenate the stdout stream text from a `shell.run` output list."
     return "".join("".join(o["text"]) if isinstance(o["text"], list) else o["text"]
         for o in outputs if o.get("output_type") == "stream" and o.get("name") == "stdout")
+
+
+def _tb_line(l, maxlen):
+    "One traceback line, capped at `maxlen`; `None` drops it (an over-long anchor line means nothing once cut). `File `/`Cell ` locations are exempt."
+    if len(l) <= maxlen: return l
+    if l.strip() and not (set(l) - set('~^ ')): return None
+    if l.lstrip().startswith(('File ', 'Cell ')): return l
+    return l[:maxlen] + '…'
+
+
+def _trunc_tb(outputs, maxlen=120):
+    "Cap over-long lines in error tracebacks: a cell magic's transformed source echoes its whole payload on one line. Locations survive whole, and so does the last chunk, which is the exception message in both IPython's format and the stdlib's."
+    for o in outputs:
+        if o.get("output_type") != "error": continue
+        # Each chunk keeps its own identity: the renderer joins the list with newlines, so
+        # flattening chunks into lines would silently drop the blank line between frames.
+        tb = o.get("traceback", [])
+        o["traceback"] = ["\n".join(l for l in (_tb_line(x, maxlen) for x in chunk.split("\n")) if l is not None)
+                          for chunk in tb[:-1]] + tb[-1:]
+    return outputs
+
+
+def _fmt_tb(shell, outputs):
+    "Reformat error tracebacks with IPython's own formatter: it drops IPython's entry frames (`__tracebackhide__`) and shows source context, so we don't reimplement either."
+    e = shell.exc
+    if e is None: return outputs
+    for o in outputs:
+        if o.get("output_type") == "error":
+            tb = _TB.structured_traceback(type(e), e, e.__traceback__, tb_offset=0)
+            # Drop the leading rule and header: decoration, and the header repeats the message.
+            # Positional, so a chain's inner headers (real section breaks) stay, and any other shape is left alone.
+            if len(tb) > 2 and set(tb[0].strip()) == {'-'} and 'Traceback' in tb[1]: tb = tb[2:]
+            o["traceback"] = tb
+    return outputs
+
+
 
 
 def _startup_block(shell):
@@ -63,7 +103,8 @@ def _execute(shell, inspectors, code):
     try: note = _inspect(shell, inspectors, code)
     except RuleBlock as e: return fmt_error("blocked", str(e))
     except Exception as e: note = f"<warn>\ninspector crashed, check skipped ({type(e).__name__}: {e})\n</warn>\n"
-    return note + render_text(shell.run(code))
+    outs = _fmt_tb(shell, shell.run(code))
+    return note + render_text(_trunc_tb(outs))
 
 
 def _request_exit(shell): shell._clikernel_exit = True

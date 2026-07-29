@@ -46,7 +46,7 @@ Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty stream
     42
     </execute_result>
 
-`display_data`/`execute_result` prefer a non-image, markdown-over-HTML representation; images are ignored. Exceptions come back as a single clean `<error>` traceback -- no color codes, not duplicated.
+`display_data`/`execute_result` prefer a non-image, markdown-over-HTML representation; images are ignored. Exceptions come back as a single clean `<error>` traceback -- no color codes, not duplicated -- formatted the way Jupyter formats them: `Cell In[N], line M` headers with a few lines of surrounding source, IPython's own entry frames trimmed away, and `[... skipping hidden N frame]` where more were hidden. Traceback lines are capped at 120 characters, except the exception message and `File `/`Cell ` locations, which are always shown whole; so a cell magic whose payload is a whole document reports its error in a few lines rather than echoing the payload back.
 
 # Interaction rules
 

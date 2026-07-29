@@ -21,6 +21,82 @@ def test_fmt_error():
     assert fmt_error("error", "boom\n") == "<error>\nboom\n</error>"
 
 
+def test_trunc_tb():
+    "Error tracebacks are capped per line: a magic's payload echo is cut, its anchor line dropped, locations kept whole"
+    from clikernel.cli import _trunc_tb
+    src = "get_ipython().run_cell_magic('exhash', 'p 0|0000| a', '" + "PAYLOAD " * 60 + "')"
+    anchors = "    " + "~" * 30 + "^" * (len(src) - 30)
+    fname = '  File "/a/long/path/' + "x" * 120 + '/mod.py", line 44, in f'
+    outs = [{"output_type": "error", "ename": "FileNotFoundError", "evalue": "boom", "traceback": [
+        "Traceback (most recent call last):\n", f"  File \"<ipython-input-1>\", line 1, in <module>\n    {src}\n{anchors}\n",
+        fname + "\n", "FileNotFoundError: boom"]}]
+    lines = "\n".join(_trunc_tb(outs)[0]["traceback"]).split("\n")   # what the renderer will emit
+    assert all(len(l) <= 121 or l.lstrip().startswith('File "') for l in lines)  # 121 = maxlen plus the ellipsis
+    assert not any(l.strip() and set(l) <= set("~^ ") for l in lines)
+    assert fname in lines                                 # locations are the part worth keeping
+    assert lines[0] == "Traceback (most recent call last):" and lines[-1] == "FileNotFoundError: boom"
+
+
+def test_trunc_tb_leaves_short_tracebacks_alone():
+    "Nothing changes for a traceback that was already readable, anchor lines included"
+    from clikernel.cli import _trunc_tb
+    tb = ["Traceback (most recent call last):\n", '  File "t.py", line 1, in <module>\n    1/0\n    ~^~\n', "ZeroDivisionError: division by zero"]
+    outs = [{"output_type": "error", "ename": "ZeroDivisionError", "evalue": "x", "traceback": list(tb)}]
+    assert _trunc_tb(outs)[0]["traceback"] == tb   # chunk structure preserved, so the rendering is byte-identical
+
+
+def test_trunc_tb_ignores_non_error_outputs():
+    "Stream and result outputs pass through untouched, however long their text"
+    from clikernel.cli import _trunc_tb
+    outs = [{"output_type": "stream", "name": "stdout", "text": "x" * 500}]
+    assert _trunc_tb(outs) == outs
+
+
+def test_trunc_tb_keeps_the_exception_message_whole():
+    "The message is what an error is read for, so the last chunk survives at any length; indented code does not"
+    from clikernel.cli import _trunc_tb
+    msg = "FileNotFoundError: cannot create {impdir}/DEV.md: parent directory {impdir} does not exist -- note: '{impdir}' looks like an unexpanded IPython variable (undefined names in a magic line are passed through literally)"
+    chained = "The above exception was the direct cause of the following exception:"
+    code = "    payload = '" + "x" * 400 + "'"
+    outs = [{"output_type": "error", "ename": "FileNotFoundError", "evalue": "x", "traceback": [
+        f'  File "t.py", line 1, in <module>\n{code}\n', chained + "\n", msg]}]
+    lines = "\n".join(_trunc_tb(outs)[0]["traceback"]).split("\n")
+    assert len(msg) > 120 and msg in lines and chained in lines
+    assert code not in lines and any(l.endswith("…") for l in lines)
+
+
+def _run_cell(src, magic=None):
+    "Run `src` through clikernel's own shell and render it as `_execute` does"
+    from clikernel.cli import _make_shell, _fmt_tb, _trunc_tb
+    from fastcore.nbio import render_text
+    shell = _make_shell()
+    if magic: shell.register_magic_function(magic, 'cell', 'boom')
+    return render_text(_trunc_tb(_fmt_tb(shell, shell.run(src))))
+
+
+def test_fmt_tb_drops_ipython_machinery():
+    "A failed big-payload magic reports in a few lines: no IPython entry frames, no payload echo, message whole"
+    def boom(line, cell): raise FileNotFoundError(f'cannot create {line}: parent directory does not exist')
+    payload = "\n".join(f"line {i} " + "x" * 60 for i in range(40))
+    out = _run_cell(f"%%boom /nodir/DEV.md\n{payload}", boom)
+    lines = out.splitlines()
+    assert "interactiveshell.py" not in out and "\x1b[" not in out
+    assert "cannot create /nodir/DEV.md: parent directory does not exist" in out   # message survives whole
+    assert max(len(l) for l in lines) <= 121
+    assert "x" * 200 not in out                                                    # payload not echoed
+    assert not any(set(l.strip()) == {'-'} for l in lines)                         # banner rule and its header dropped
+
+
+def test_fmt_tb_keeps_source_context():
+    "Surrounding source lines are the reason to reuse IPython's formatter, so check they arrive"
+    out = _run_cell("a = 1\nb = 2\nassert a == b, 'mismatch'\nc = 3")
+    assert "assert a == b" in out and "b = 2" in out   # failing line plus its context
+    assert "AssertionError: mismatch" in out
+
+
+
+
+
 def _failure_detail(proc):
     if proc.stderr is None: return ""
     ready, _, _ = select.select([proc.stderr], [], [], 0)
