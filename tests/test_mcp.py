@@ -1,4 +1,4 @@
-import asyncio, json, os, shutil, signal, sys, tempfile
+import asyncio, json, os, shutil, signal, socket, subprocess, sys, tempfile, urllib.error, urllib.request
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -161,3 +161,47 @@ async def test_graceful_kill(tmp_path):
     _kill_worker(w)                                  # sync path (signal handler, atexit)
     await w.proc.wait()
     assert m2.read_text() == "cleaned"
+
+
+def _free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _post(url, token=None):
+    "POST to `url`, returning the HTTP status (auth is checked before MCP parses anything)"
+    hdrs = {"Content-Type": "application/json"}
+    if token: hdrs["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, data=b"{}", headers=hdrs)
+    try: return urllib.request.urlopen(req, timeout=10).status
+    except urllib.error.HTTPError as e: return e.code
+
+
+async def test_http_auth(tmp_path):
+    "The streamable-http transport serves the same tools, behind a bearer token that unauthorized requests can't skip."
+    from mcp.client.streamable_http import streamable_http_client, create_mcp_http_client
+    port, tok = _free_port(), "test-token"
+    cmd = shutil.which("clikernel-mcp")
+    argv = ([cmd] if cmd else [sys.executable, "-m", "clikernel.mcp"]) + ["--transport", "streamable-http", "--port", str(port)]
+    env = dict(os.environ, CLIKERNEL_TOKEN=tok, CLIKERNEL_STATE_DIR=str(tmp_path))
+    proc = subprocess.Popen(argv, env=env, cwd=tmp_path)
+    url = f"http://127.0.0.1:{port}/mcp"
+    try:
+        for _ in range(100):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5): break
+            except OSError: await asyncio.sleep(0.1)
+        assert await asyncio.to_thread(_post, url) == 401                   # no token
+        assert await asyncio.to_thread(_post, url, "wrong-token") == 401    # wrong token
+        async with create_mcp_http_client(headers={"Authorization": f"Bearer {tok}"}) as hc, \
+                streamable_http_client(url, http_client=hc) as streams, \
+                ClientSession(*streams[:2]) as s:   # mcp 2.x drops the session-id callback from the tuple
+            await s.initialize()
+            assert {t.name for t in (await s.list_tools()).tools} == {"execute", "restart", "interrupt"}
+            await _text(s, "execute", code="x = 41")
+            assert await _text(s, "execute", code="x + 1") == "42"      # state persists across HTTP calls
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+

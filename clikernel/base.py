@@ -222,7 +222,20 @@ def _install_signal_guards(w):
     atexit.register(_kill_worker, w)
 
 
-async def _serve(w, name, docs, instructions=None, eager=False):
+def _auth_app(app, token):
+    "Wrap ASGI `app` to reject any request whose bearer token doesn't match `token`"
+    async def _f(scope, receive, send):
+        if scope['type'] == 'http':
+            hdr = dict(scope.get('headers') or ()).get(b'authorization', b'').decode()
+            if not (hdr.startswith('Bearer ') and secrets.compare_digest(hdr[7:], token)):
+                await send(dict(type='http.response.start', status=401, headers=[(b'www-authenticate', b'Bearer')]))
+                return await send(dict(type='http.response.body', body=b'unauthorized'))
+        await app(scope, receive, send)
+    return _f
+
+
+
+async def _serve(w, name, docs, instructions=None, eager=False, transport='stdio', host='127.0.0.1', port=8000, token=None):
     try: from mcp.server.mcpserver import MCPServer as FastMCP  # mcp>=2 renamed FastMCP
     except ImportError: from mcp.server.fastmcp import FastMCP  # mcp 1.x
     # When `eager`, start the worker before building the server so its banner (including startup output) is
@@ -273,7 +286,10 @@ async def _serve(w, name, docs, instructions=None, eager=False):
     for f in (execute, restart, interrupt):
         f.__doc__ = docs[f.__name__]
         mcp.tool(structured_output=False)(f)
-    await mcp.run_stdio_async()
+    if transport == 'stdio': return await mcp.run_stdio_async()
+    import uvicorn
+    cfg = uvicorn.Config(_auth_app(mcp.streamable_http_app(), token), host=host, port=port, log_level='warning')
+    await uvicorn.Server(cfg).serve()
 
 
 def run_mcp(
@@ -281,9 +297,16 @@ def run_mcp(
     name='clikernel',  # MCP server name
     docs=None,         # Overrides for `TOOL_DOCS` entries (tool descriptions and the state-lost note)
     instructions=None, # Static MCP `instructions` text, for when the worker isn't started eagerly
-    eager=False        # Start the worker at server startup, forwarding its banner (with startup output) as `instructions`?
+    eager=False,       # Start the worker at server startup, forwarding its banner (with startup output) as `instructions`?
+    transport='stdio', # 'stdio', or 'streamable-http' to serve over HTTP
+    host='127.0.0.1',  # Interface to bind, for `streamable-http`
+    port=8000,         # Port to bind, for `streamable-http`
+    token=None,        # Bearer token `streamable-http` clients must send (default: `$CLIKERNEL_TOKEN`)
 ):
     "Run an MCP server supervising a persistent stream-protocol worker subprocess."
+    if transport != 'stdio' and not token:
+        token = os.getenv('CLIKERNEL_TOKEN')
+        if not token: raise ValueError(f'{transport} needs a bearer token: pass `token` or set $CLIKERNEL_TOKEN')
     w = _Worker(argv)
     _install_signal_guards(w)
-    asyncio.run(_serve(w, name, {**TOOL_DOCS, **(docs or {})}, instructions, eager))
+    asyncio.run(_serve(w, name, {**TOOL_DOCS, **(docs or {})}, instructions, eager, transport, host, port, token))
