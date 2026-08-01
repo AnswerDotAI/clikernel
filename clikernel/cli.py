@@ -128,8 +128,10 @@ def _nbrun_magic(shell):
     "`%nbrun` line magic: like `shell.nbrun`, defaulting `fname` to the current notebook (aidialog.dlgskill's `set_dlg`)"
     def nbrun(*msgids, fname=None, above:bool=False, below:bool=False, all:bool=False, exported:bool=False,
         skip_noeval:bool=False, continue_on_error:bool=False):
-        "`shell.nbrun` with its stop-on-error default inverted, since `--` bool flags can only turn a default off"
-        shell.nbrun(*msgids, fname=fname, above=above, below=below, all=all, exported=exported, skip_noeval=skip_noeval, stop_on_error=not continue_on_error)
+        "`shell.nbrun` with its stop-on-error default inverted, since `--` bool flags can only turn a default off. Async under async magics (`fastcore.aio.enable_async_magics`), so cells with top-level `await` work"
+        kw = dict(fname=fname, above=above, below=below, all=all, exported=exported, skip_noeval=skip_noeval, stop_on_error=not continue_on_error)
+        if hasattr(shell, '_amagic'): return shell.nbrun_async(*msgids, **kw)
+        shell.nbrun(*msgids, **kw)
     base = _magic_wrap(nbrun)
     def magic(line):
         if '--fname' not in line:

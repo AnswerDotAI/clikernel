@@ -246,8 +246,10 @@ NB_CELLS = [("aaa111", "x = 41\nprint('one')"),
     ("eee555", "no_b"),
     ("fff666", "print('four')")]
 
-def make_nb(path):
-    cells = [dict(cell_type="code", id=i, metadata={}, outputs=[], execution_count=None, source=src) for i,src in NB_CELLS]
+ASYNC_CELLS = [("ggg777", "import asyncio\nawait asyncio.sleep(0.01)\nprint('seven')")]
+
+def make_nb(path, cells=NB_CELLS):
+    cells = [dict(cell_type="code", id=i, metadata={}, outputs=[], execution_count=None, source=src) for i,src in cells]
     path.write_text(json.dumps(dict(cells=cells, metadata={}, nbformat=4, nbformat_minor=5)))
     return path
 
@@ -334,6 +336,14 @@ def test_cli(tmp_path):
         assert "eee555" not in body and "four" not in body
         body, _ = send(proc, "%nbrun fff666 --above --continue_on_error\n")
         assert body.count("Traceback") == 2 and "no_b" in body and "four" in body
+
+        # cells with top-level await: fine sync (no loop running), and awaited on the loop under async magics
+        anb = make_nb(tmp_path/"a.ipynb", ASYNC_CELLS)
+        body, _ = send(proc, f"%nbrun --fname {anb} --all\n")
+        assert "seven" in body
+        send(proc, "from fastcore.aio import enable_async_magics; enable_async_magics(get_ipython())\n")
+        body, _ = send(proc, f"%nbrun --fname {anb} --all\n")
+        assert "seven" in body
 
         # exit(): empty body, final delimiter, clean stop
         body, nd = send(proc, "exit()\n")
