@@ -1,0 +1,14 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "clikernel"
+  site-url: "https://AnswerDotAI.github.io/clikernel"
+  description: "Serve persistent Jupyter kernels to LLMs as concise text, over MCP or a plain stream protocol"
+  repo-branch: main
+  repo-url: "https://github.com/AnswerDotAI/clikernel"
+
+format-links:
+  - html
+  - format: commonmark
+    text: Markdown

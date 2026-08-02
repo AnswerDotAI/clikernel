@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clikernel"
 dynamic = ["version"]
-description = "A tiny stdin/stdout IPython worker"
+description = "Serve persistent Jupyter kernels to LLMs as concise text, over MCP or a plain stream protocol"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "clikernel contributors" }]
 classifiers = [
@@ -16,24 +16,17 @@ classifiers = [
 ]
 
 dependencies = [
-  "ipython>=9.15.0",
-  "execnb>=0.2.9",
-  "fastcore",
-  "mcp>=1.2",
+  "fastcore>=2.1.17",
+  "jupyasyncclient>=0.2.0",
+  "mcpmini>=0.0.1",
 ]
 
 [project.optional-dependencies]
 dev = [
   "fastship",
-  "build",
-  "twine",
-  "pytest",
-  "pytest-asyncio",
+  "jupygate>=0.0.1",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
 
 [project.entry-points.pyskills]
 clikernel = "clikernel.skill"
@@ -44,6 +37,11 @@ Homepage = "https://github.com/AnswerDotAI/clikernel"
 [project.scripts]
 clikernel = "clikernel.cli:main"
 clikernel-mcp = "clikernel.mcp:main"
+
+[project.entry-points.nbdev]
+clikernel = "clikernel._modidx:d"
+
+[tool.nbdev]
 
 [tool.setuptools.dynamic]
 version = { attr = "clikernel.__version__" }

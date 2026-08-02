@@ -3,14 +3,13 @@
 Copy this to `$XDG_CONFIG_HOME/clikernel/inspectors.py` (usually
 `~/.config/clikernel/inspectors.py`) to enable it. clikernel calls each inspector
 with the parsed AST of every cell, before the cell runs. An inspector may return a
-string (prepended to the cell's output as a note), raise RuleBlock (the cell does not run and
-the exception is reported), or return None (do nothing). Define `inspect` and/or a
-list `inspectors` of such functions.
+string (printed as a note before the cell's output), raise RuleBlock (the cell does not run and
+the exception is reported; `RuleBlock` is provided in this file's namespace, no import needed),
+or return None (do nothing). Define `inspect` and/or a list `inspectors` of such functions.
 
 This one raises RuleBlock, so it blocks (any other exception is treated as an inspector bug: the cell still runs). To warn instead, `return` the message rather than raising.
 """
 import ast
-from clikernel.base import RuleBlock
 
 _BANNED_MODS = {"subprocess"}
 
