@@ -19,6 +19,8 @@ dependencies = [
   "fastcore>=2.1.17",
   "jupyasyncclient>=0.2.0",
   "mcpmini>=0.0.1",
+  "aidialog>=0.0.7",
+  "pillow",
 ]
 
 [project.optional-dependencies]

@@ -17,6 +17,7 @@ d = { 'settings': {'branch': 'main', 'doc_baseurl': '/', 'doc_host': '', 'git_ur
                                 'clikernel.core.Client.aclose': ('core.html#client.aclose', 'clikernel/core.py'),
                                 'clikernel.core.Client.connect': ('core.html#client.connect', 'clikernel/core.py'),
                                 'clikernel.core.Client.execute': ('core.html#client.execute', 'clikernel/core.py'),
+                                'clikernel.core.Client.execute_outs': ('core.html#client.execute_outs', 'clikernel/core.py'),
                                 'clikernel.core.Client.interrupt': ('core.html#client.interrupt', 'clikernel/core.py'),
                                 'clikernel.core.Client.list_kernels': ('core.html#client.list_kernels', 'clikernel/core.py'),
                                 'clikernel.core.Client.restart': ('core.html#client.restart', 'clikernel/core.py'),
@@ -30,6 +31,7 @@ d = { 'settings': {'branch': 'main', 'doc_baseurl': '/', 'doc_host': '', 'git_ur
                                 'clikernel.core.render_outs': ('core.html#render_outs', 'clikernel/core.py'),
                                 'clikernel.core.resolve': ('core.html#resolve', 'clikernel/core.py')},
             'clikernel.mcp': { 'clikernel.mcp.main': ('mcp.html#main', 'clikernel/mcp.py'),
-                               'clikernel.mcp.mk_server': ('mcp.html#mk_server', 'clikernel/mcp.py')},
+                               'clikernel.mcp.mk_server': ('mcp.html#mk_server', 'clikernel/mcp.py'),
+                               'clikernel.mcp.part2block': ('mcp.html#part2block', 'clikernel/mcp.py')},
             'clikernel.skill': {},
             'clikernel.stream': {}}}

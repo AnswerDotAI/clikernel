@@ -126,7 +126,7 @@ class Client:
         await self.kc.wait_for_ready(timeout=30)
 
     async def _run(self, code):
-        "Execute `code` and render its outputs; the raw pipeline under `execute`"
+        "Execute `code`, returning nbformat-style output dicts; the raw pipeline under `execute`"
         mid = self.kc.execute(code, allow_stdin=False)
         msgs = []
         while True:
@@ -136,7 +136,7 @@ class Client:
             if m.get('parent_header',{}).get('msg_id') != mid: continue
             if m['header']['msg_type']=='status' and m['content']['execution_state']=='idle': break
             msgs.append(m)
-        return render_outs(msgs2outs(msgs))
+        return msgs2outs(msgs)
 
 # %% ../nbs/00_core.ipynb #94497e4a
 @patch
@@ -155,9 +155,9 @@ async def connect(self:Client, host='', kernel=''):
     await self._use(mgr, kid)
     out = ''
     d = Path(self.cfgdir) if self.cfgdir else cfg_dir()
-    if (p := d/'startup.py').exists(): out = await self._run(_startup_src(p.read_text(), p))
+    if (p := d/'startup.py').exists(): out = await self.execute(_startup_src(p.read_text(), p))
     if (p := d/'inspectors.py').exists():
-        res = await self._run(_inspector_setup(p.read_text()))
+        res = await self.execute(_inspector_setup(p.read_text()))
         if res:   # a load failure is fatal: refusing to start beats running uninspected
             await self.mgr.shutdown_kernel(kid)
             self.kc,self.kid = None,None
@@ -165,10 +165,16 @@ async def connect(self:Client, host='', kernel=''):
     return f'created kernel {kid} on {url}' + (f'\n{out}' if out.strip() else '')
 
 @patch
-async def execute(self:Client, code):
-    "Run `code` in the current kernel; concise rendered text of its outputs"
+async def execute_outs(self:Client, code):
+    "Run `code` in the current kernel; nbformat-style output dicts (or a protocol note string)"
     if not self.kc: return 'no kernel: call `connect` first'
     return await self._run(code)
+
+@patch
+async def execute(self:Client, code):
+    "Run `code` in the current kernel; concise rendered text of its outputs"
+    r = await self.execute_outs(code)
+    return r if isinstance(r, str) else render_outs(r)
 
 # %% ../nbs/00_core.ipynb #1ef42fff
 @patch

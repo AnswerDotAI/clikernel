@@ -28,7 +28,7 @@ Remote gateways (a jupygate or solveit instance elsewhere) are the same verbs wi
 
 # Output shape
 
-Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output comes back as its preferred text form, e.g. `42`; multiple outputs use readable XML-ish tags (`<stdout>`, `<execute_result>`, ...) with raw, unescaped body text. Exceptions come back as one clean traceback: ANSI-stripped, over-long lines capped at 120 characters with `File `/`Cell ` locations and the exception message always whole. `input()` fails fast in-band (`allow_stdin=False`) rather than hanging.
+Outputs are rendered with `fastcore.nbio.render_text`. A single non-empty output comes back as its preferred text form, e.g. `42`; multiple outputs use readable XML-ish tags (`<stdout>`, `<execute_result>`, ...) with raw, unescaped body text. Exceptions come back as one clean traceback: ANSI-stripped, over-long lines capped at 120 characters with `File `/`Cell ` locations and the exception message always whole. `input()` fails fast in-band (`allow_stdin=False`) rather than hanging. Image outputs (plots etc.) arrive as MCP image blocks, resized to a token-friendly budget, each preceded by a `<media id=...>` text tag naming it; when the image cannot be delivered, a `<media-unavailable>` note appears in the text instead.
 
 # Interaction rules
 
