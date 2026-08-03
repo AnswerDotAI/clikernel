@@ -43,7 +43,7 @@ Notebooks are the tests (`nbdev-test`); demos run live against `jupygate.core.se
 - **Unix sockets**: `file://` URLs for gateways; socket dir `xdg_runtime_dir() or xdg_state_home()/'jupygate'`; needs websocket-over-uds support in jupyasyncclient first. Until then, loopback TCP.
 - **launchd/systemd install helper** for the resident jupygate.
 - **Idle reaping** of forgotten kernels, jupygate-side, with age/idle info in `list_kernels`.
-- **v1 leftovers**: `stream.py` (a self-contained JSON-lines worker protocol used by teleprint) ships unchanged for now; iversonnb still imports v1's `clikernel.base`, so at the 2.0 release it needs a `clikernel<0.2` pin or a migration.
+- **v1 leftovers**: `stream.py` (a self-contained JSON-lines worker protocol used by teleprint) ships unchanged for now; the former iversonnb kernels migrated: jnb's J kernel now rides kernmini, and aplnb's APL kernel will follow.
 - **2026-07-28 MCP era**: direct remote MCP (a solveit instance serving clikernel tools itself), MRTR for `input()`, tasks for long cells — the upgrade checklist lives in mcpmini's DEV.md.
 
 ## Ship
