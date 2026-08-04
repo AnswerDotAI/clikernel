@@ -12,7 +12,6 @@ d = { 'settings': {'branch': 'main', 'doc_baseurl': '/', 'doc_host': '', 'git_ur
                                'clikernel.cli.serve_stream': ('cli.html#serve_stream', 'clikernel/cli.py')},
             'clikernel.core': { 'clikernel.core.Client': ('core.html#client', 'clikernel/core.py'),
                                 'clikernel.core.Client.__init__': ('core.html#client.__init__', 'clikernel/core.py'),
-                                'clikernel.core.Client._run': ('core.html#client._run', 'clikernel/core.py'),
                                 'clikernel.core.Client._use': ('core.html#client._use', 'clikernel/core.py'),
                                 'clikernel.core.Client.aclose': ('core.html#client.aclose', 'clikernel/core.py'),
                                 'clikernel.core.Client.connect': ('core.html#client.connect', 'clikernel/core.py'),

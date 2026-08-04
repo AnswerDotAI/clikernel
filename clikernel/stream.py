@@ -1,12 +1,16 @@
 """Streaming JSON-lines worker protocol: nbformat-shaped output events, and a supervisor for select-based UIs.
 
-The base protocol returns one rendered text body per request -- right for LLM
-clients. UI clients (e.g. teleprint) want typed outputs as events instead:
-each `shell.run` output (stream/display_data/execute_result/error) arrives as
-its own `out` event with the nbformat dict intact (mime bundles included), then
-a `done` event. Requests are one JSON object per line: `{"op":"exec","id":n,
-"code":...}`, `{"op":"complete","id":n,"code":...,"pos":n}`, `{"op":"exit"}`.
-Interrupt is not on the wire: the supervisor sends SIGINT to the worker process.
+A deliberately minimal protocol front over gateway kernels -- MCP's sibling with
+everything stripped (no tool list, no banner, no schemas): one JSON object per
+line in (`{"op":"exec","id":n,"code":...}`, `{"op":"complete","id":n,"code":...,
+"pos":n}`, `{"op":"exit"}`), events out. Each execution's outputs
+(stream/display_data/execute_result/error) arrive as `out` events with the
+nbformat dict intact (mime bundles included), then a `done` event. Interrupt is
+not on the wire: the supervisor sends SIGINT to the worker process, which the
+worker maps to a kernel interrupt. The worker connects to jupygate (URL as
+argv[0], default local; a kernel id as argv[1] attaches instead of creating),
+so the compact protocol exercises the full real stack -- which is its point:
+a self-contained test client, and a reminder to keep the layers flexible.
 """
 import json,os,select,signal,subprocess,sys,time
 
@@ -14,35 +18,37 @@ def _emit(obj):
     sys.stdout.write(json.dumps(obj) + '\n')
     sys.stdout.flush()
 
-def _do_exec(shell, req):
+async def _do_exec(kc, req):
     rid = req.get('id')
-    for o in shell.run(req['code']): _emit(dict(ev='out', id=rid, output=o))
+    async for o in kc.run(req['code']): _emit(dict(ev='out', id=rid, output=o))
     _emit({'ev':'done','id':rid})
 
-def _do_complete(shell, req):
+async def _do_complete(kc, req):
     line, pos = req['code'], req.get('pos', len(req['code']))
-    try: text, matches = shell.Completer.complete(line_buffer=line, cursor_pos=pos)
-    except Exception: text, matches = '', []
-    _emit(dict(ev='completions', id=req.get('id'), matches=matches, start=pos - len(text or '')))
+    matches, start = await kc.complete(line, pos)
+    _emit(dict(ev='completions', id=req.get('id'), matches=matches, start=start))
+
+async def _amain(url, kernel=None):
+    import asyncio
+    from jupyasyncclient import JupyAsyncKernelClient
+    loop = asyncio.get_running_loop()
+    async with await JupyAsyncKernelClient.connect(url, kernel=kernel, cwd=os.getcwd()) as kc:
+        loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(kc.interrupt_kernel()))
+        _emit({'ev':'ready'})
+        while True:
+            line = await loop.run_in_executor(None, sys.stdin.readline)
+            if not line: break
+            req = json.loads(line)
+            op = req.get('op')
+            if op == 'exit': break
+            if op == 'exec': await _do_exec(kc, req)
+            elif op == 'complete': await _do_complete(kc, req)
+            else: _emit(dict(ev='protocol-error', id=req.get('id'), error=f'unknown op {op!r}'))
 
 def main():
-    signal.signal(signal.SIGINT, signal.default_int_handler)
-    from clikernel.cli import _make_shell,_set_default_dirs
-    _set_default_dirs()
-    shell = _make_shell()
-    _emit({'ev':'ready'})
-    while True:
-        try: line = sys.stdin.readline()
-        except KeyboardInterrupt: continue  # an idle SIGINT aimed at an execution that just finished
-        if not line: break
-        req = json.loads(line)
-        op = req.get('op')
-        if op == 'exit': break
-        try:
-            if op == 'exec': _do_exec(shell, req)
-            elif op == 'complete': _do_complete(shell, req)
-            else: _emit(dict(ev='protocol-error', id=req.get('id'), error=f'unknown op {op!r}'))
-        except KeyboardInterrupt: _emit(dict(ev='done', id=req.get('id'), interrupted=True))
+    import asyncio
+    args = sys.argv[1:]
+    asyncio.run(_amain(args[0] if args else 'http://127.0.0.1:8787', args[1] if len(args) > 1 else None))
 
 class StreamWorker:
     "Drive a `clikernel.stream` worker subprocess: non-blocking `pump` for select loops, SIGINT interrupt."

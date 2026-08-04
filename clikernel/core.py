@@ -11,10 +11,9 @@ __all__ = ['DEFAULT_URL', 'STATE_LOST', 'cfg_dir', 'gateways', 'resolve', 'rende
 import os, tomllib
 from fastcore.utils import *
 from fastcore.ansi import strip_ansi
-from fastcore.nbio import msgs2outs, render_text
+from fastcore.nbio import render_text
 from fastcore.xdg import xdg_config_home
-from jupyasyncclient import JupyAsyncMultiKernelManager
-
+from jupyasyncclient import JupyAsyncMultiKernelManager, DeadKernelError
 
 # %% ../nbs/00_core.ipynb #596419b8
 DEFAULT_URL = 'http://127.0.0.1:8787'
@@ -125,19 +124,6 @@ class Client:
         self.kc.start_channels()
         await self.kc.wait_for_ready(timeout=30)
 
-    async def _run(self, code):
-        "Execute `code`, returning nbformat-style output dicts; the raw pipeline under `execute`"
-        mid = self.kc.execute(code, allow_stdin=False)
-        msgs = []
-        while True:
-            m = await self.kc.get_iopub_msg()
-            if m['header']['msg_type']=='status' and m['content'].get('execution_state')=='dead':
-                return 'NOTE: the kernel process died. `connect` to create or attach to another.'
-            if m.get('parent_header',{}).get('msg_id') != mid: continue
-            if m['header']['msg_type']=='status' and m['content']['execution_state']=='idle': break
-            msgs.append(m)
-        return msgs2outs(msgs)
-
 # %% ../nbs/00_core.ipynb #94497e4a
 @patch
 async def connect(self:Client, host='', kernel=''):
@@ -168,7 +154,8 @@ async def connect(self:Client, host='', kernel=''):
 async def execute_outs(self:Client, code):
     "Run `code` in the current kernel; nbformat-style output dicts (or a protocol note string)"
     if not self.kc: return 'no kernel: call `connect` first'
-    return await self._run(code)
+    try: return await self.kc.run(code)
+    except DeadKernelError: return 'NOTE: the kernel process died. `connect` to create or attach to another.'
 
 @patch
 async def execute(self:Client, code):
