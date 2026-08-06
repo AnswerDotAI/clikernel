@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.2.0
+
+### New Features
+
+- Rewire stream worker onto jupygate kernels via jupyasyncclient, drop in-process shell and Client.`_run`, add stream REPL example ([#29](https://github.com/AnswerDotAI/clikernel/issues/29))
+- Return kernel image outputs as MCP image blocks via aidialog `output_parts`/`merge_media` ([#28](https://github.com/AnswerDotAI/clikernel/issues/28))
+- Rewrite clikernel as jupygate kernel client: nbdev port, MCP connect/execute/lifecycle tools, persistent kernels, stream CLI retained ([#27](https://github.com/AnswerDotAI/clikernel/issues/27))
+- Support top-level await in %nbrun cells under async magics ([#26](https://github.com/AnswerDotAI/clikernel/issues/26))
+- Add streamable-http transport with required bearer-token auth ([#25](https://github.com/AnswerDotAI/clikernel/pull/25)), thanks to [@erikgaas](https://github.com/erikgaas)
+- Support mcp SDK 2.0, which renamed FastMCP to MCPServer ([#23](https://github.com/AnswerDotAI/clikernel/pull/23)), thanks to [@erikgaas](https://github.com/erikgaas)
+- Forward rich image display outputs as MCP ImageContent blocks ([#16](https://github.com/AnswerDotAI/clikernel/pull/16)), thanks to [@ncoop57](https://github.com/ncoop57)
+
+
 ## 0.1.7
 
 ### New Features
