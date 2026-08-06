@@ -34,7 +34,8 @@ dev = [
 clikernel = "clikernel.skill"
 
 [project.urls]
-Homepage = "https://github.com/AnswerDotAI/clikernel"
+Repository = "https://github.com/AnswerDotAI/clikernel"
+Documentation = "https://AnswerDotAI.github.io/clikernel/"
 
 [project.scripts]
 clikernel = "clikernel.cli:main"
