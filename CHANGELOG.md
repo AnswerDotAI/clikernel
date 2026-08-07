@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.1
+
+### New Features
+
+- Delegate traceback truncation and ANSI stripping to fastcore `render_text`(`tb_maxlen`=120); drop `render_outs` ([#31](https://github.com/AnswerDotAI/clikernel/issues/31))
+
+
 ## 0.2.0
 
 ### New Features
