@@ -22,6 +22,8 @@ Remote gateways (a jupygate or solveit instance elsewhere) are the same verbs wi
 
 `execute` runs IPython, so magics work as written. The `%nbrun` line magic (registered by aidialog, which the standard startup imports) runs cells from a `.ipynb` file by cell id prefix -- see `doc(dsk)` after startup for its options. It runs *in the kernel*, so its cells share session state and are checked by the session's inspectors.
 
+`%cd` expands `~` and is the idiomatic way to change the kernel's directory: prefer it over `os.chdir` plus `expanduser`. The fastai file tools (fastcore, exhash, rgapi, aidialog) also expand `~` themselves, so paths with `~` pass straight through.
+
 # Session setup
 
 `connect` (creating) first runs `~/.config/clikernel/startup.py` (with `__file__` bound, so the file can locate its neighbors), then installs inspectors from `~/.config/clikernel/inspectors.py`. Both travel as source, so remote kernels get the same setup as local ones. Inspectors see each cell before it runs (1-arg: the AST; 2-arg: AST and raw source): a returned string prints as a note ahead of the cell's output, raising `RuleBlock` (provided in the file's namespace) blocks the cell, and inspector bugs warn and fail open. Attached kernels are taken as found: no startup, no inspectors.
