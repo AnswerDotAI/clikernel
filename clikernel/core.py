@@ -47,6 +47,7 @@ finally: del __file__'''
 # %% ../nbs/00_core.ipynb #3dbf4cb6
 _INSP_RUNNER = r'''
 import inspect as _clik_inspect
+import sys as _clik_sys
 from IPython.core.error import InputRejected
 class RuleBlock(InputRejected):
     "Raise from an inspector to deliberately block a cell; any other inspector exception is a bug, and fails open"
@@ -55,6 +56,11 @@ class _ClikInspect:
     "Calls each inspector once per cell: 1-arg get the AST, 2-arg also the raw source"
     def __init__(self, fs): self.fs = fs
     def visit(self, tree):
+        fr, n = _clik_sys._getframe(), 0
+        while fr:
+            n += fr.f_code.co_name == 'run_cell_async'
+            fr = fr.f_back
+        if n > 1: return tree  # nested run_cell: cell replayed by a tool (%nbrun etc.), not typed
         for f in self.fs:
             try:
                 note = f(tree, _clik_src) if len(_clik_inspect.signature(f).parameters) > 1 else f(tree)
