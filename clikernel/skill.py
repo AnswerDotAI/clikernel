@@ -4,7 +4,7 @@
 
 clikernel connects this conversation to Jupyter kernels hosted by a jupygate server that runs all the time, independently of any conversation. Kernels persist until explicitly stopped: state kept across the whole conversation -- imports, live objects, monkeypatches, cached results -- and, when wanted, across conversations. Treat it as a notebook-style workbench, not a one-shot script runner.
 
-Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search and directory listing go through the `rgapi` pyskill (`rg()`/`fd()`/`ls()`), and GitHub work through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for local git operations, project test/build commands, and non-Python tools.
+Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search and directory listing go through the `rgapi` pyskill (`rg()`/`fd()`/`ls()`), and GitHub and local git work through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for project test/build commands and non-Python tools. Run them through the harness's shell tool, never `subprocess`/`os.system` from the kernel, which would bypass the harness's permission hooks.
 
 # The lifecycle contract
 
@@ -21,6 +21,8 @@ Remote gateways (a jupygate or solveit instance elsewhere) are the same verbs wi
 # Notebook magics
 
 `execute` runs IPython, so magics work as written. The `%nbrun` line magic (registered by aidialog, which the standard startup imports) runs cells from a `.ipynb` file by cell id prefix -- see `doc(dsk)` after startup for its options. It runs *in the kernel*, so its cells share session state and are checked by the session's inspectors.
+
+`%cd` expands `~` and is the idiomatic way to change the kernel's directory: prefer it over `os.chdir`.
 
 # Session setup
 
