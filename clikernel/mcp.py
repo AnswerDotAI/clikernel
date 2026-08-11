@@ -17,7 +17,7 @@ from aidialog.dialog import Message
 from aidialog.hist import output_parts, merge_media
 from aidialog.msg_parts import PartType, data_url
 from fastcore.nbio import render_text
-from .core import Client
+from .core import Client, MAXLEN
 from . import __version__
 
 
@@ -44,7 +44,7 @@ def mk_server(c:Client):
         "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). Requires a `connect` first. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
         r = await c.execute_outs(code)
         if isinstance(r, str): return r
-        res = merge_media(render_text(r, tb_maxlen=120), output_parts(Message(msg_type='code', output=r)))
+        res = merge_media(render_text(r, tb_maxlen=MAXLEN), output_parts(Message(msg_type='code', output=r)))
         return res if isinstance(res, str) else dict(content=[part2block(p) for p in res], isError=False)
 
     async def list_kernels(
