@@ -67,7 +67,7 @@ def mk_server(c:Client):
         return await c.stop(kernel)
 
     async def restart()->str:
-        "Kill the current kernel's process and start a fresh one under the same id: `sys.modules` genuinely reset, all session state discarded. Use for a clean slate, after rebuilding a native extension, or after a reload left stale classes behind (symptoms: `isinstance` mysteriously failing, a class missing a method you know it has). Also works when `execute` is stuck. After restarting, redo any imports/setup the task still needs."
+        "Kill the current kernel's process and start a fresh one under the same id: `sys.modules` genuinely reset, all session state discarded. Use for a clean slate, after rebuilding a native extension, or after a reload left stale classes behind (symptoms: `isinstance` mysteriously failing, a class missing a method you know it has). Also works when `execute` is stuck. A kernel this conversation created gets startup.py re-run and inspectors reinstalled (the reply says so); an attached kernel restarts bare, as found."
         return await c.restart()
 
     async def interrupt()->str:

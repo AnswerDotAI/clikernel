@@ -14,7 +14,7 @@ The lifecycle has one implicit convenience and no implicit destruction beyond it
 - Returning to earlier work (the user asks to continue where a previous conversation left off, or to use their solveit kernel): `list_kernels` to see what's running, then `connect` with the kernel id (or unique prefix). Attach runs nothing -- the kernel's live state is the point.
 - End of work: an auto kernel stops itself with the conversation. `stop_kernel` an explicitly created kernel when it was for this task only; leave it running if the user wants to return to it, and tell the user its id so they can.
 
-`restart` gives the current kernel a genuinely fresh interpreter under the same id (redo imports after it); `interrupt` stops a too-long `execute` while keeping state. If a reply says the kernel died, `connect` again. If `connect` fails because the gateway is unreachable, the gateway server is not running -- report that to the user rather than working around it.
+`restart` gives the current kernel a genuinely fresh interpreter under the same id (a kernel this conversation created gets `startup.py` and inspectors again; redo any other setup); `interrupt` stops a too-long `execute` while keeping state. If a reply says the kernel died, `connect` again. If `connect` fails because the gateway is unreachable, the gateway server is not running -- report that to the user rather than working around it.
 
 Remote gateways (a rustygate or solveit instance elsewhere) are the same verbs with a `host`: a name from `~/.config/clikernel/gateways.toml` (`[gateways.<name>]` tables with `url`, `token` or `token_env`, and optional `verify = false` for self-signed TLS) or a URL. Tokens live in the config file, never in tool arguments.
 
