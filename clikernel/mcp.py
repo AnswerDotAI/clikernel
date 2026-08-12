@@ -33,7 +33,7 @@ def mk_server(c:Client):
     "An `MCPServer` whose tools close over `c`: connect, execute, and the lifecycle verbs"
     alock = asyncio.Lock()
     async def connect(
-        host:str='', # Gateway: empty for the default local jupygate, a `gateways.toml` name, or a URL
+        host:str='', # Gateway: empty for the local default, a `gateways.toml` name, or a URL
         kernel:str='', # Kernel id (or unique prefix) to attach to; empty creates a fresh kernel
     )->str:
         "Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`) and the startup output. Kernels made or attached this way persist until explicitly stopped: disconnecting, switching, and conversation end never kill them. (Connecting also immediately stops the auto kernel, if `execute` had created one.)"

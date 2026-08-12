@@ -1,6 +1,6 @@
 """The stream-protocol frontend: the service on stdin/stdout for token-reading clients
 
-The `clikernel` command: the delimiter-framed stdin/stdout protocol v1 established (documented in the README, rationale unchanged — a client that reads stdout as tokens wants no echo, a cheap ack byte, and a per-process random delimiter to read until). The protocol machinery ports from v1 verbatim; underneath, the process is now a thin client of a jupygate kernel. Run bare it creates a kernel and stops it again on exit — whoever ran the command made that decision by running it — while `--kernel` attaches to an existing kernel and leaves it exactly as found. Ctrl-C during a long cell translates into a kernel interrupt, jupyter-console style, instead of killing the process.
+The `clikernel` command: the delimiter-framed stdin/stdout protocol v1 established (documented in the README, rationale unchanged — a client that reads stdout as tokens wants no echo, a cheap ack byte, and a per-process random delimiter to read until). The protocol machinery ports from v1 verbatim; underneath, the process is now a thin client of a gateway kernel. Run bare it creates a kernel and stops it again on exit — whoever ran the command made that decision by running it — while `--kernel` attaches to an existing kernel and leaves it exactly as found. Ctrl-C during a long cell translates into a kernel interrupt, jupyter-console style, instead of killing the process.
 
 Docs: https://AnswerDotAI.github.io/clikernel/cli.html.md"""
 
@@ -120,10 +120,10 @@ _EXITS = ('exit', 'exit()', 'quit', 'quit()')
 
 @call_parse
 def main(
-    host:str='',    # Gateway: empty for the default local jupygate, a `gateways.toml` name, or a URL
+    host:str='',    # Gateway: empty for the local default, a `gateways.toml` name, or a URL
     kernel:str='',  # Kernel id (or unique prefix) to attach to; empty creates a kernel, stopped again on exit
 ):
-    "The `clikernel` console script: the stream protocol over one jupygate kernel"
+    "The `clikernel` console script: the stream protocol over one gateway kernel"
     signal.signal(signal.SIGINT, signal.default_int_handler)
     print("please wait, loading...", flush=True)
     loop = asyncio.new_event_loop()

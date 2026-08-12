@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The smallest useful client of the clikernel stream protocol: a line REPL, stdlib only.
 
-Run with jupygate up (`python examples/streamrepl.py [URL]`). Enter runs a line
+Run with a gateway up (`python examples/streamrepl.py [URL]`). Enter runs a line
 in a kernel created for this session; outputs print as they stream. Blank line
 or ctrl-D quits. What this file demonstrates: the whole protocol is `exec` in,
 `out`/`done` events back -- everything else (state, interrupts, completion) is

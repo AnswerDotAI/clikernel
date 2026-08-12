@@ -2,7 +2,7 @@
 
 # Core idea
 
-clikernel connects this conversation to Jupyter kernels hosted by a jupygate server that runs all the time, independently of any conversation. State lasts the whole conversation -- imports, live objects, monkeypatches, cached results -- and a kernel you `connect` explicitly persists across conversations too. Treat it as a notebook-style workbench, not a one-shot script runner.
+clikernel connects this conversation to Jupyter kernels hosted by a gateway server (rustygate) that runs all the time, independently of any conversation. State lasts the whole conversation -- imports, live objects, monkeypatches, cached results -- and a kernel you `connect` explicitly persists across conversations too. Treat it as a notebook-style workbench, not a one-shot script runner.
 
 Prefer it over one-off Python scripts (`python -c`, shell heredocs) whenever you need to inspect runtime behavior, test an idea, call a Python API, examine package state, run a live probe, or iterate on an implementation detail. Prefer in-kernel tools over shell equivalents when they exist: file search and directory listing go through the `rgapi` pyskill (`rg()`/`fd()`/`ls()`), and GitHub and local git work through the `ghapi` pyskill, when those are installed. Shell commands remain the right tool for project test/build commands and non-Python tools. Run them through the harness's shell tool, never `subprocess`/`os.system` from the kernel, which would bypass the harness's permission hooks.
 
@@ -14,9 +14,9 @@ The lifecycle has one implicit convenience and no implicit destruction beyond it
 - Returning to earlier work (the user asks to continue where a previous conversation left off, or to use their solveit kernel): `list_kernels` to see what's running, then `connect` with the kernel id (or unique prefix). Attach runs nothing -- the kernel's live state is the point.
 - End of work: an auto kernel stops itself with the conversation. `stop_kernel` an explicitly created kernel when it was for this task only; leave it running if the user wants to return to it, and tell the user its id so they can.
 
-`restart` gives the current kernel a genuinely fresh interpreter under the same id (redo imports after it); `interrupt` stops a too-long `execute` while keeping state. If a reply says the kernel died, `connect` again. If `connect` fails because the gateway is unreachable, the jupygate server is not running -- report that to the user rather than working around it.
+`restart` gives the current kernel a genuinely fresh interpreter under the same id (redo imports after it); `interrupt` stops a too-long `execute` while keeping state. If a reply says the kernel died, `connect` again. If `connect` fails because the gateway is unreachable, the gateway server is not running -- report that to the user rather than working around it.
 
-Remote gateways (a jupygate or solveit instance elsewhere) are the same verbs with a `host`: a name from `~/.config/clikernel/gateways.toml` (`[gateways.<name>]` tables with `url` and `token` or `token_env`) or a URL. Tokens live in the config file, never in tool arguments.
+Remote gateways (a rustygate or solveit instance elsewhere) are the same verbs with a `host`: a name from `~/.config/clikernel/gateways.toml` (`[gateways.<name>]` tables with `url`, `token` or `token_env`, and optional `verify = false` for self-signed TLS) or a URL. Tokens live in the config file, never in tool arguments.
 
 # Notebook magics
 

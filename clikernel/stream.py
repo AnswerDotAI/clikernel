@@ -7,7 +7,7 @@ line in (`{"op":"exec","id":n,"code":...}`, `{"op":"complete","id":n,"code":...,
 (stream/display_data/execute_result/error) arrive as `out` events with the
 nbformat dict intact (mime bundles included), then a `done` event. Interrupt is
 not on the wire: the supervisor sends SIGINT to the worker process, which the
-worker maps to a kernel interrupt. The worker connects to jupygate (URL as
+worker maps to a kernel interrupt. The worker connects to a gateway (URL as
 argv[0], default local; a kernel id as argv[1] attaches instead of creating),
 so the compact protocol exercises the full real stack -- which is its point:
 a self-contained test client, and a reminder to keep the layers flexible.

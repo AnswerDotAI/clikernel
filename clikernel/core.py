@@ -1,6 +1,6 @@
-"""Connect to jupygate-hosted kernels and turn execution into concise text
+"""Connect to gateway-hosted kernels and turn execution into concise text
 
-clikernel is the LLM side of a two-process design: jupygate runs all the time and hosts the kernels; clikernel starts and stops with each conversation and holds nothing but a pointer. This module is the whole client: gateway resolution from `gateways.toml`, the concise-text rendering contract (ANSI-stripped, capped tracebacks), delivery of `startup.py` and `inspectors.py` into freshly created kernels, and `Client` — connect (create or attach), execute, interrupt, restart, stop, list. The MCP and CLI frontends are thin faces over `Client`; nothing here creates or kills a kernel except when asked, and the one scoped kill is opt-in: a kernel created with `auto=True` belongs to its client, ended by that client's next `connect` or by the frontend on the way out.
+clikernel is the LLM side of a two-process design: a gateway ([rustygate](https://github.com/AnswerDotAI/rustygate)) runs all the time and hosts the kernels; clikernel starts and stops with each conversation and holds nothing but a pointer. This module is the whole client: gateway resolution from `gateways.toml`, the concise-text rendering contract (ANSI-stripped, capped tracebacks), delivery of `startup.py` and `inspectors.py` into freshly created kernels, and `Client` — connect (create or attach), execute, interrupt, restart, stop, list. The MCP and CLI frontends are thin faces over `Client`; nothing here creates or kills a kernel except when asked, and the one scoped kill is opt-in: a kernel created with `auto=True` belongs to its client, ended by that client's next `connect` or by the frontend on the way out.
 
 Docs: https://AnswerDotAI.github.io/clikernel/core.html.md"""
 
@@ -25,17 +25,17 @@ def cfg_dir():
     return xdg_config_home()/'clikernel'
 
 def gateways(cfgdir=None):
-    "Named gateways from `gateways.toml`: `{name: {url, token | token_env}}`"
+    "Named gateways from `gateways.toml`: `{name: {url, token | token_env, verify}}`"
     p = (Path(cfgdir) if cfgdir else cfg_dir())/'gateways.toml'
     return tomllib.loads(p.read_text()).get('gateways', {}) if p.exists() else {}
 
 def resolve(host='', cfgdir=None):
-    "`(url, token)` for `host`: empty = the default local gateway, a URL = itself, else a `gateways.toml` name"
-    if not host: return os.environ.get('CLIKERNEL_HOST', DEFAULT_URL), os.environ.get('CLIKERNEL_TOKEN')
-    if '://' in host: return host, os.environ.get('CLIKERNEL_TOKEN')
+    "`(url, token, verify)` for `host`: empty = the default local gateway, a URL = itself, else a `gateways.toml` name"
+    if not host: return os.environ.get('CLIKERNEL_HOST', DEFAULT_URL), os.environ.get('CLIKERNEL_TOKEN'), True
+    if '://' in host: return host, os.environ.get('CLIKERNEL_TOKEN'), True
     g = gateways(cfgdir).get(host)
     if g is None: raise ValueError(f"unknown gateway {host!r}: not a URL, and not in {cfg_dir()/'gateways.toml'}")
-    return g['url'], g.get('token') or os.environ.get(g.get('token_env','')) or None
+    return g['url'], g.get('token') or os.environ.get(g.get('token_env','')) or None, g.get('verify', True)
 
 
 # %% ../nbs/00_core.ipynb #0d846754
@@ -115,8 +115,8 @@ async def connect(self:Client, host='', kernel='', auto=False):
         except Exception as e:
             self.kc,self.kid,self.auto = None,None,False
             note = f'\nnote: stopping the auto kernel failed ({e})'
-    url,tok = resolve(host, self.cfgdir)
-    mgr = JupyAsyncMultiKernelManager(url, token=tok)
+    url,tok,ver = resolve(host, self.cfgdir)
+    mgr = JupyAsyncMultiKernelManager(url, token=tok, verify=ver)
     ks = await mgr.list_kernels()   # verify reachability and auth now, loudly
     if kernel:
         kid = first(k['id'] for k in ks if k['id'].startswith(kernel))
@@ -156,8 +156,8 @@ async def execute(self:Client, code):
 async def list_kernels(self:Client, host=''):
     "One line per kernel on the gateway (the current one if `host` is empty and connected)"
     if host or self.mgr is None:
-        url,tok = resolve(host, self.cfgdir)
-        mgr = JupyAsyncMultiKernelManager(url, token=tok)
+        url,tok,ver = resolve(host, self.cfgdir)
+        mgr = JupyAsyncMultiKernelManager(url, token=tok, verify=ver)
         ks = await mgr.list_kernels()
         await mgr.aclose()
     else: ks = await self.mgr.list_kernels()

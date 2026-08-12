@@ -1,14 +1,14 @@
-"The stream protocol round trip: a real worker subprocess against an in-thread jupygate."
+"The stream protocol round trip: a real worker subprocess against a spawned rustygate."
 import select, sys, time
 import pytest
 
 
 @pytest.fixture(scope="module")
 def gateway():
-    from jupygate.core import create_app, serve
-    server = serve(create_app(), port=0, in_thread=True)
-    yield server.url
-    server.should_exit = True
+    from rustygate.tools import start_gateway
+    g = start_gateway()
+    yield g.url
+    g.stop()
 
 
 def _drain_until(w, pred, timeout=30):
