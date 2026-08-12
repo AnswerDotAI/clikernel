@@ -1,6 +1,6 @@
 """The MCP frontend: `Client` as tools on stdio
 
-The frontend Claude Code launches per conversation: `mk_server` closes the tools over a `Client`, and `main` (the `clikernel-mcp` console script) serves it on stdio via mcpmini. There is no instructions machinery and nothing eager — usage is taught by skill text, the server answers `initialize` instantly, and nothing happens until the model calls `connect`. Tool descriptions carry v1's hard-won wording.
+The frontend Claude Code launches per conversation: `mk_server` closes the tools over a `Client`, and `main` (the `clikernel-mcp` console script) serves it on stdio via mcpmini. There is no instructions machinery and nothing eager — usage is taught by skill text, the server answers `initialize` instantly, and nothing happens until the first tool call. An `execute` with no kernel connected auto-connects first, so `connect` is only needed to attach, to reach another gateway, or to make a kernel that outlives the conversation. Tool descriptions carry v1's hard-won wording.
 
 Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
 
@@ -31,21 +31,28 @@ def part2block(p):
 # %% ../nbs/01_mcp.ipynb #76e2d782
 def mk_server(c:Client):
     "An `MCPServer` whose tools close over `c`: connect, execute, and the lifecycle verbs"
+    alock = asyncio.Lock()
     async def connect(
         host:str='', # Gateway: empty for the default local jupygate, a `gateways.toml` name, or a URL
         kernel:str='', # Kernel id (or unique prefix) to attach to; empty creates a fresh kernel
     )->str:
-        "Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`) and the startup output. Kernels persist until explicitly stopped: disconnecting, switching, and conversation end never kill anything."
+        "Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`) and the startup output. Kernels made or attached this way persist until explicitly stopped: disconnecting, switching, and conversation end never kill them. (Connecting also immediately stops the auto kernel, if `execute` had created one.)"
         return await c.connect(host, kernel)
 
     async def execute(
         code:str, # Python/IPython code to run
     ):
-        "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). Requires a `connect` first. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
+        "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run), and its connect banner - kernel id and startup output - is prepended to the reply: read it. An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
+        pre = ''
+        async with alock:   # parallel first calls must not each create a kernel
+            if not c.kc: pre = await c.connect(auto=True) + '\n'
         r = await c.execute_outs(code)
-        if isinstance(r, str): return r
+        if isinstance(r, str): return pre + r
         res = merge_media(render_text(r, tb_maxlen=MAXLEN), output_parts(Message(msg_type='code', output=r)))
-        return res if isinstance(res, str) else dict(content=[part2block(p) for p in res], isError=False)
+        if isinstance(res, str): return pre + res
+        blocks = [part2block(p) for p in res]
+        if pre: blocks = [dict(type='text', text=pre)] + blocks
+        return dict(content=blocks, isError=False)
 
     async def list_kernels(
         host:str='', # Gateway to list; empty for the current one (or the default if not connected)
@@ -56,7 +63,7 @@ def mk_server(c:Client):
     async def stop_kernel(
         kernel:str='', # Kernel id (or unique prefix); empty stops the current kernel
     )->str:
-        "Stop a kernel for good: its process ends and its state is gone. This is the only way any kernel is ever stopped - do it when the user is done with it, and leave kernels running that the user wants to return to."
+        "Stop a kernel for good: its process ends and its state is gone. Explicitly created or attached kernels are stopped only this way - do it when the user is done with a kernel, and leave kernels running that the user wants to return to. (A kernel auto-created by `execute` also stops itself when the conversation ends or when `connect` moves elsewhere.)"
         return await c.stop(kernel)
 
     async def restart()->str:
@@ -76,6 +83,10 @@ def main():
     async def _main():
         c = Client()
         try: await serve_stdio(mk_server(c))
-        finally: await c.aclose()
+        finally:
+            if c.auto:   # an execute-made kernel is conversation-scoped; the gateway may already be gone
+                try: await c.stop()
+                except Exception as e: print(f'auto kernel stop failed: {e!r}', file=sys.stderr)
+            await c.aclose()
     asyncio.run(_main())
 

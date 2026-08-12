@@ -1,6 +1,6 @@
 """Connect to jupygate-hosted kernels and turn execution into concise text
 
-clikernel is the LLM side of a two-process design: jupygate runs all the time and hosts the kernels; clikernel starts and stops with each conversation and holds nothing but a pointer. This module is the whole client: gateway resolution from `gateways.toml`, the concise-text rendering contract (ANSI-stripped, capped tracebacks), delivery of `startup.py` and `inspectors.py` into freshly created kernels, and `Client` — connect (create or attach), execute, interrupt, restart, stop, list. The MCP and CLI frontends are thin faces over `Client`; nothing here creates or kills a kernel except when asked.
+clikernel is the LLM side of a two-process design: jupygate runs all the time and hosts the kernels; clikernel starts and stops with each conversation and holds nothing but a pointer. This module is the whole client: gateway resolution from `gateways.toml`, the concise-text rendering contract (ANSI-stripped, capped tracebacks), delivery of `startup.py` and `inspectors.py` into freshly created kernels, and `Client` — connect (create or attach), execute, interrupt, restart, stop, list. The MCP and CLI frontends are thin faces over `Client`; nothing here creates or kills a kernel except when asked, and the one scoped kill is opt-in: a kernel created with `auto=True` belongs to its client, ended by that client's next `connect` or by the frontend on the way out.
 
 Docs: https://AnswerDotAI.github.io/clikernel/core.html.md"""
 
@@ -95,7 +95,7 @@ STATE_LOST = 'NOTE: the kernel restarted with a fresh interpreter: all session s
 
 class Client:
     "One conversation's connection: a gateway manager, and the current kernel"
-    def __init__(self, cfgdir=None): self.cfgdir,self.mgr,self.kc,self.kid = cfgdir,None,None,None
+    def __init__(self, cfgdir=None): self.cfgdir,self.mgr,self.kc,self.kid,self.auto = cfgdir,None,None,None,False
 
     async def _use(self, mgr, kid):
         "Point at `kid` on `mgr`, dropping any previous ws (never the kernel)"
@@ -107,8 +107,14 @@ class Client:
 
 # %% ../nbs/00_core.ipynb #94497e4a
 @patch
-async def connect(self:Client, host='', kernel=''):
-    "Connect to a gateway (create a kernel, or attach to `kernel` by id prefix); the pointer aims at it afterwards"
+async def connect(self:Client, host='', kernel='', auto=False):
+    "Connect to a gateway (create a kernel, or attach to `kernel` by id prefix); the pointer aims at it afterwards; `auto` marks a created kernel as client-scoped"
+    note = ''
+    if self.auto:   # scoped to this client: any new connect ends it, even one already dead
+        try: await self.stop()
+        except Exception as e:
+            self.kc,self.kid,self.auto = None,None,False
+            note = f'\nnote: stopping the auto kernel failed ({e})'
     url,tok = resolve(host, self.cfgdir)
     mgr = JupyAsyncMultiKernelManager(url, token=tok)
     ks = await mgr.list_kernels()   # verify reachability and auth now, loudly
@@ -116,7 +122,7 @@ async def connect(self:Client, host='', kernel=''):
         kid = first(k['id'] for k in ks if k['id'].startswith(kernel))
         if not kid: raise ValueError(f'no kernel matching {kernel!r} on {url}: {[k["id"][:8] for k in ks]}')
         await self._use(mgr, kid)
-        return f'connected to existing kernel {kid} on {url}'
+        return f'connected to existing kernel {kid} on {url}' + note
     kw = dict(cwd=os.getcwd(), env=dict(os.environ)) if not host else {}   # the default gateway is local by definition: kernels start where, and as, the conversation lives (cwd and environment - so kernel-side tools that key state to the conversation, like llmdojo's doc-state, resolve it correctly)
     kid = await mgr.start_kernel(**kw)
     await self._use(mgr, kid)
@@ -129,7 +135,8 @@ async def connect(self:Client, host='', kernel=''):
             await self.mgr.shutdown_kernel(kid)
             self.kc,self.kid = None,None
             raise RuntimeError(f'inspectors.py failed to load; kernel stopped:\n{res}')
-    return f'created kernel {kid} on {url}' + (f'\n{out}' if out.strip() else '')
+    self.auto = auto
+    return f'created kernel {kid} on {url}' + (f'\n{out}' if out.strip() else '') + note
 
 @patch
 async def execute_outs(self:Client, code):
@@ -168,7 +175,7 @@ async def stop(self:Client, kernel=''):
     await self.mgr.shutdown_kernel(kid)
     if kid == self.kid:
         await self.kc.aclose()
-        self.kc,self.kid = None,None
+        self.kc,self.kid,self.auto = None,None,False
     return f'stopped kernel {kid}'
 
 @patch
