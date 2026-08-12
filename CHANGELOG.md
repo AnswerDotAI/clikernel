@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.4
+
+### New Features
+
+- Swap jupygate for rustygate; add optional verify flag for self-signed TLS gateways ([#36](https://github.com/AnswerDotAI/clikernel/issues/36))
+
+
 ## 0.2.3
 
 ### New Features
