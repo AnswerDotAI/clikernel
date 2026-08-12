@@ -2,6 +2,16 @@
 
 <!-- do not remove -->
 
+## 0.2.3
+
+### New Features
+
+- Auto-create a conversation-scoped kernel on execute when none is connected, stopped at exit or on the next connect ([#35](https://github.com/AnswerDotAI/clikernel/issues/35))
+- Add MAXLEN constant (180) for traceback line truncation, replacing hardcoded 120 ([#34](https://github.com/AnswerDotAI/clikernel/issues/34))
+- require shell tool over subprocess/os.system for shell commands ([#33](https://github.com/AnswerDotAI/clikernel/pull/33)), thanks to [@ncoop57](https://github.com/ncoop57)
+- document %cd ~ expansion as the idiomatic way to change kernel directory ([#30](https://github.com/AnswerDotAI/clikernel/pull/30)), thanks to [@ncoop57](https://github.com/ncoop57)
+
+
 ## 0.2.2
 
 ### New Features
