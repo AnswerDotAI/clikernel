@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.5
+
+### New Features
+
+- restart now re-runs startup.py and reinstalls inspectors on client-created kernels; attached kernels still restart bare ([#37](https://github.com/AnswerDotAI/clikernel/issues/37))
+
+
 ## 0.2.4
 
 ### New Features
