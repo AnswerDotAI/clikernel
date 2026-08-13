@@ -101,7 +101,6 @@ class Client:
     async def _use(self, mgr, kid):
         "Point at `kid` on `mgr`, dropping any previous ws (never the kernel)"
         if self.kc: await self.kc.aclose()
-        if self.mgr is not None and self.mgr is not mgr: await self.mgr.aclose()
         self.mgr,self.kid,self.kc = mgr,kid,mgr.client(kid)
         self.kc.start_channels()
         await self.kc.wait_for_ready(timeout=30)
@@ -168,7 +167,6 @@ async def list_kernels(self:Client, host=''):
         url,tok,ver = resolve(host, self.cfgdir)
         mgr = JupyAsyncMultiKernelManager(url, token=tok, verify=ver)
         ks = await mgr.list_kernels()
-        await mgr.aclose()
     else: ks = await self.mgr.list_kernels()
     if not ks: return 'no kernels'
     def _l(k): return f"{k['id']}  {k.get('execution_state','?')}  connections={k.get('connections','?')}" + ('  <- current' if k['id']==self.kid else '')
@@ -220,5 +218,4 @@ async def interrupt(self:Client):
 async def aclose(self:Client):
     "Drop connections; kernels are left exactly as they are"
     if self.kc: await self.kc.aclose()
-    if self.mgr: await self.mgr.aclose()
     self.mgr,self.kc,self.kid = None,None,None
