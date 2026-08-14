@@ -151,7 +151,10 @@ async def execute_outs(self:Client, code):
     "Run `code` in the current kernel; nbformat-style output dicts (or a protocol note string)"
     if not self.kc: return 'no kernel: call `connect` first'
     try: return await self.kc.run(code)
-    except DeadKernelError: return 'NOTE: the kernel process died. `connect` to create or attach to another.'
+    except DeadKernelError:
+        await self.kc.aclose()
+        self.kc = None
+        return 'NOTE: the kernel process died. The next `execute` will create another, or call `connect` to attach to one.'
 
 @patch
 async def execute(self:Client, code):
