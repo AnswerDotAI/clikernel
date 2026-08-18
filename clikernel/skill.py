@@ -18,6 +18,6 @@ Remote gateways are the same verbs with a `host`, named in `~/.config/clikernel/
 - Only the last expression in a cell displays. `print(...)` any earlier value you need to see.
 - Everything a cell outputs lands in the conversation. Be selective: `len(v)` first, then decide what to show.
 - Don't re-run an `import` already run this session. If a name raises `NameError`, the kernel restarted or is newly attached: redo setup.
-- `importlib.reload` is not always enough: `from x import *` consumers and `@patch`-decorated classes hold stale references. On stale-class symptoms, use `restart`.
+- After an `nbdev-export` (or any edit to a module already imported), `importlib.reload` that module and re-import any names you hold from it: a name bound by `from x import y` keeps the old object, while a `@patch`ed method refreshes with the reload because the patch writes onto the shared class. Restart only when a class you hold instances of was itself redefined. Check what is loaded by calling it, never with `inspect.getsource`, which reads the file on disk.
 - Try the simple import or API call first, before changing the environment, monkeypatching, or adding setup.
 """
