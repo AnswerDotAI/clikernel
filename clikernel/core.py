@@ -10,7 +10,8 @@ Docs: https://AnswerDotAI.github.io/clikernel/core.html.md"""
 __all__ = ['DEFAULT_URL', 'MAXLEN', 'STATE_LOST', 'STATE_LOST_SETUP', 'cfg_dir', 'gateways', 'resolve', 'Client']
 
 # %% ../nbs/00_core.ipynb #2b3b7f4a
-import httpx2, os, tomllib
+import os, tomllib
+from fastspec.errors import APIError
 from fastcore.utils import *
 from fastcore.nbio import render_text
 from fastcore.xdg import xdg_config_home
@@ -190,9 +191,11 @@ async def restart(self:Client):
     "Restart the current kernel: same id, fresh interpreter; a kernel this client created gets `startup.py` and `inspectors.py` again"
     if not self.kc: return 'no kernel: call `connect` first'
     try: await self.mgr.restart_kernel(self.kid)
-    except httpx2.HTTPStatusError as e:
-        if e.response.status_code != 404:
-            return f'restart failed ({e.response.text}); the kernel is still listed: retry, `stop` it, or `connect` for a fresh one'
+    except APIError as e:
+        if e.status_code is None:
+            return f'restart did not complete ({e.error_type}): retry, or `connect` for a fresh kernel; check the gateway if this persists'
+        if e.status_code != 404:
+            return f'restart failed ({e.message}); the kernel is still listed: retry, `stop` it, or `connect` for a fresh one'
         old,kw = self.kid,{}
         await self.kc.aclose()
         if self.mgr.base_url == resolve('', self.cfgdir)[0]: kw = dict(cwd=os.getcwd(), env=dict(os.environ))
@@ -200,8 +203,6 @@ async def restart(self:Client):
         self.made = True
         out = await self._setup()
         return f'kernel {old} was gone; created fresh kernel {self.kid}.\n' + STATE_LOST_SETUP + (f'\n{out}' if out.strip() else '')
-    except httpx2.TransportError as e:
-        return f'restart did not complete ({type(e).__name__}): retry, or `connect` for a fresh kernel; check the gateway if this persists'
     await self.kc.wait_for_ready(timeout=30)
     if not self.made: return STATE_LOST
     out = await self._setup()
