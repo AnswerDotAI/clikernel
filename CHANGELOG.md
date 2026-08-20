@@ -2,6 +2,16 @@
 
 <!-- do not remove -->
 
+## 0.2.6
+
+### New Features
+
+- Replace httpx2 exception handling with fastspec APIError in kernel restart error paths ([#42](https://github.com/AnswerDotAI/clikernel/issues/42))
+- Stop closing kernel managers on disconnect or kernel switch ([#40](https://github.com/AnswerDotAI/clikernel/issues/40))
+- Rename httpx import to httpx2 ([#39](https://github.com/AnswerDotAI/clikernel/issues/39))
+- restart now recovers when the kernel is gone by creating a fresh kernel on the same gateway, with startup files reapplied ([#38](https://github.com/AnswerDotAI/clikernel/issues/38))
+
+
 ## 0.2.5
 
 ### New Features
