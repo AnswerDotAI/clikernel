@@ -33,18 +33,17 @@ def part2block(p):
 def mk_server(c:Client):
     "An `MCPServer` whose tools close over `c`: connect, execute, and the lifecycle verbs"
     alock = asyncio.Lock()
-    startup_doc = '' if c.quiet else ' and the startup output'
-    banner_doc = '' if c.quiet else ', and its connect banner - kernel id and startup output - is prepended to the reply: read it'
     async def connect(
         host:str='', # Gateway: empty for the local default, a `gateways.toml` name, or a URL
         kernel:str='', # Kernel id (or unique prefix) to attach to; empty creates a fresh kernel
     )->str:
+        "Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`). Kernels made or attached this way persist until explicitly stopped: disconnecting, switching, and conversation end never kill them. (Connecting also immediately stops the auto kernel, if `execute` had created one.)"
         return await c.connect(host, kernel)
-    connect.__doc__ = f"Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`){startup_doc}. Kernels made or attached this way persist until explicitly stopped: disconnecting, switching, and conversation end never kill them. (Connecting also immediately stops the auto kernel, if `execute` had created one.)"
 
     async def execute(
         code:str, # Python/IPython code to run
     ):
+        "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run). An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
         pre = ''
         async with alock:   # parallel first calls must not each create a kernel
             if not c.kc:
@@ -57,7 +56,6 @@ def mk_server(c:Client):
         blocks = [part2block(p) for p in res]
         if pre: blocks = [dict(type='text', text=pre)] + blocks
         return dict(content=blocks, isError=False)
-    execute.__doc__ = f"Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run){banner_doc}. An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
 
     async def list_kernels(
         host:str='', # Gateway to list; empty for the current one (or the default if not connected)
@@ -79,6 +77,9 @@ def mk_server(c:Client):
         "Interrupt the code the current kernel is running (SIGINT, i.e. KeyboardInterrupt): the in-flight `execute` returns with a KeyboardInterrupt traceback, and session state survives. Prefer this over `restart` when a call is merely taking too long. Only meaningful while an `execute` is running."
         return await c.interrupt()
 
+    if not c.quiet:
+        connect.__doc__ += " The startup output also appears in the reply."
+        execute.__doc__ += " The connect banner - kernel id and startup output - is prepended to that first reply: read it."
     return MCPServer('clikernel', [connect, execute, list_kernels, stop_kernel, restart, interrupt], version=__version__)
 
 
