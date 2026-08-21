@@ -12,6 +12,7 @@ __all__ = ['part2block', 'mk_server', 'main']
 # %% ../nbs/01_mcp.ipynb #28c42902
 import asyncio
 from fastcore.utils import *
+from fastcore.script import call_parse, store_true
 from mcpmini.core import MCPServer, serve_stdio
 from aidialog.dialog import Message
 from aidialog.hist import output_parts, merge_media
@@ -32,20 +33,23 @@ def part2block(p):
 def mk_server(c:Client):
     "An `MCPServer` whose tools close over `c`: connect, execute, and the lifecycle verbs"
     alock = asyncio.Lock()
+    startup_doc = '' if c.quiet else ' and the startup output'
+    banner_doc = '' if c.quiet else ', and its connect banner - kernel id and startup output - is prepended to the reply: read it'
     async def connect(
         host:str='', # Gateway: empty for the local default, a `gateways.toml` name, or a URL
         kernel:str='', # Kernel id (or unique prefix) to attach to; empty creates a fresh kernel
     )->str:
-        "Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`) and the startup output. Kernels made or attached this way persist until explicitly stopped: disconnecting, switching, and conversation end never kill them. (Connecting also immediately stops the auto kernel, if `execute` had created one.)"
         return await c.connect(host, kernel)
+    connect.__doc__ = f"Connect to a kernel. With `kernel`: attach to that existing kernel exactly as it is (nothing is run) - this is how a later conversation returns to live state, and how to reach a kernel someone else created. Without: create a fresh kernel, run the user's startup.py in it, and install their inspectors; the reply includes the new kernel's id (reusable in a later `connect`){startup_doc}. Kernels made or attached this way persist until explicitly stopped: disconnecting, switching, and conversation end never kill them. (Connecting also immediately stops the auto kernel, if `execute` had created one.)"
 
     async def execute(
         code:str, # Python/IPython code to run
     ):
-        "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run), and its connect banner - kernel id and startup output - is prepended to the reply: read it. An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
         pre = ''
         async with alock:   # parallel first calls must not each create a kernel
-            if not c.kc: pre = await c.connect(auto=True) + '\n'
+            if not c.kc:
+                banner = await c.connect(auto=True)
+                if not c.quiet: pre = banner + '\n'
         r = await c.execute_outs(code)
         if isinstance(r, str): return pre + r
         res = merge_media(render_text(r, tb_maxlen=MAXLEN), output_parts(Message(msg_type='code', output=r)))
@@ -53,6 +57,7 @@ def mk_server(c:Client):
         blocks = [part2block(p) for p in res]
         if pre: blocks = [dict(type='text', text=pre)] + blocks
         return dict(content=blocks, isError=False)
+    execute.__doc__ = f"Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run){banner_doc}. An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
 
     async def list_kernels(
         host:str='', # Gateway to list; empty for the current one (or the default if not connected)
@@ -78,10 +83,13 @@ def mk_server(c:Client):
 
 
 # %% ../nbs/01_mcp.ipynb #3b90f0e8
-def main():
+@call_parse
+def main(
+    quiet:store_true=False,  # Keep startup output out of replies; an auto-connecting `execute` returns just the result
+):
     "The `clikernel-mcp` console script: the tools on stdio, state is one `Client`"
     async def _main():
-        c = Client()
+        c = Client(quiet=quiet)
         try: await serve_stdio(mk_server(c))
         finally:
             if c.auto:   # an execute-made kernel is conversation-scoped; the gateway may already be gone

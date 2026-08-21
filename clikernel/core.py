@@ -97,7 +97,7 @@ STATE_LOST_SETUP = 'NOTE: the kernel restarted with a fresh interpreter: startup
 
 class Client:
     "One conversation's connection: a gateway manager, and the current kernel"
-    def __init__(self, cfgdir=None): self.cfgdir,self.mgr,self.kc,self.kid,self.auto,self.made = cfgdir,None,None,None,False,False
+    def __init__(self, cfgdir=None, quiet=False): self.cfgdir,self.quiet,self.mgr,self.kc,self.kid,self.auto,self.made = cfgdir,quiet,None,None,None,False,False
 
     async def _use(self, mgr, kid):
         "Point at `kid` on `mgr`, dropping any previous ws (never the kernel)"
@@ -145,7 +145,7 @@ async def connect(self:Client, host='', kernel='', auto=False):
     self.made = True
     out = await self._setup()
     self.auto = auto
-    return f'created kernel {kid} on {url}' + (f'\n{out}' if out.strip() else '') + note
+    return f'created kernel {kid} on {url}' + (f'\n{out}' if out.strip() and not self.quiet else '') + note
 
 @patch
 async def execute_outs(self:Client, code):
@@ -202,11 +202,11 @@ async def restart(self:Client):
         await self._use(self.mgr, await self.mgr.start_kernel(**kw))
         self.made = True
         out = await self._setup()
-        return f'kernel {old} was gone; created fresh kernel {self.kid}.\n' + STATE_LOST_SETUP + (f'\n{out}' if out.strip() else '')
+        return f'kernel {old} was gone; created fresh kernel {self.kid}.\n' + STATE_LOST_SETUP + (f'\n{out}' if out.strip() and not self.quiet else '')
     await self.kc.wait_for_ready(timeout=30)
     if not self.made: return STATE_LOST
     out = await self._setup()
-    return STATE_LOST_SETUP + (f'\n{out}' if out.strip() else '')
+    return STATE_LOST_SETUP + (f'\n{out}' if out.strip() and not self.quiet else '')
 
 @patch
 async def interrupt(self:Client):
