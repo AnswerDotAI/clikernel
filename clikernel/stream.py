@@ -13,6 +13,8 @@ so the compact protocol exercises the full real stack -- which is its point:
 a self-contained test client, and a reminder to keep the layers flexible.
 """
 import json,os,select,signal,subprocess,sys,time
+from fastcore.nbio import msg2out
+from jupywire.route import OUTPUT_MSGS
 
 def _emit(obj):
     sys.stdout.write(json.dumps(obj) + '\n')
@@ -20,7 +22,9 @@ def _emit(obj):
 
 async def _do_exec(kc, req):
     rid = req.get('id')
-    async for o in kc.run(req['code']): _emit(dict(ev='out', id=rid, output=o))
+    def _out(m):
+        if m['msg_type'] in OUTPUT_MSGS: _emit(dict(ev='out', id=rid, output=msg2out(m)))
+    await kc.run(req['code'], on_output=_out)
     _emit({'ev':'done','id':rid})
 
 async def _do_complete(kc, req):
