@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.7
+
+### New Features
+
+- Add stdin support via MCP elicitation, kernel env propagation, and Client async context manager for scoped kernel lifecycle ([#45](https://github.com/AnswerDotAI/clikernel/issues/45))
+- Simplify MCP tool docstrings by using literal docstrings with conditional suffixes for non-quiet mode instead of f-string assignment ([#44](https://github.com/AnswerDotAI/clikernel/issues/44))
+- Add --quiet option to suppress kernel startup output from connect, restart, and auto-connect execute replies ([#43](https://github.com/AnswerDotAI/clikernel/issues/43))
+
+
 ## 0.2.6
 
 ### New Features
