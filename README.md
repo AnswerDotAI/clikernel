@@ -27,7 +27,9 @@ Register the stdio server with your MCP host, e.g. for Claude Code:
 claude mcp add clikernel -- clikernel-mcp
 ```
 
-The tools mirror the gateway’s kernel API plus one composite: `connect` (create a fresh kernel — running `startup.py` and installing inspectors — or attach to an existing one by id), `execute` (run code, get concise text), `list_kernels`, `stop_kernel`, `restart`, and `interrupt`. An `execute` with no kernel connected auto-creates one, scoped to the conversation: it stops at conversation end, or when `connect` moves elsewhere. Kernels made or attached with an explicit `connect` are stopped only by `stop_kernel` — a later conversation reattaches by id and continues where the last one stopped. `$CLIKERNEL_HOST` overrides the default gateway (`http://127.0.0.1:8787`).
+The tools mirror the gateway’s kernel API: `connect`, `execute`, `list_kernels`, `stop_kernel`, `restart`, and `interrupt`. When executed code requests input, the MCP client shows an elicitation dialog while the same `execute` call remains active. Repeated prompts repeat that callback. Password-marked prompts are refused.
+
+An `execute` with no kernel connected auto-creates one, scoped to the conversation: it stops at conversation end, or when `connect` moves elsewhere. Kernels made or attached with an explicit `connect` are stopped only by `stop_kernel` — a later conversation reattaches by id and continues where the last one stopped. `$CLIKERNEL_HOST` overrides the default gateway (`http://127.0.0.1:8787`).
 
 Pass `--quiet` (`clikernel-mcp --quiet`) for a host whose sessions should not see banner noise: startup still runs, but its output stays out of every reply, and an auto-connecting `execute` returns just the result.
 

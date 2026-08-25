@@ -1,6 +1,6 @@
 """The MCP frontend: `Client` as tools on stdio
 
-The frontend Claude Code launches per conversation: `mk_server` closes the tools over a `Client`, and `main` (the `clikernel-mcp` console script) serves it on stdio via mcpmini. There is no instructions machinery and nothing eager — usage is taught by skill text, the server answers `initialize` instantly, and nothing happens until the first tool call. An `execute` with no kernel connected auto-connects first, so `connect` is only needed to attach, to reach another gateway, or to make a kernel that outlives the conversation. Tool descriptions carry v1's hard-won wording.
+The frontend Claude Code launches per conversation. `mk_server` closes the tools over a `Client`, and `main` serves them on stdio through mcpmini. The server answers `initialize` without starting a kernel. The first `execute` auto-connects when needed. `connect` remains available for attaching, selecting another gateway, or creating a kernel that outlives the conversation. A kernel `input_request` becomes an MCP elicitation inside the same `execute` call. jupywire sends the elicitation response back to the requesting kernel.
 
 Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
 
@@ -33,6 +33,15 @@ def part2block(p):
 def mk_server(c:Client):
     "An `MCPServer` whose tools close over `c`: connect, execute, and the lifecycle verbs"
     alock = asyncio.Lock()
+    input_schema = dict(type='object', properties=dict(value=dict(type='string')), required=['value'])
+
+    async def _input(msg):
+        content = msg['content']
+        if content.get('password'): raise RuntimeError('password prompts are not supported through MCP')
+        r = await srv.elicit(content.get('prompt',''), input_schema)
+        if r.get('action') != 'accept': raise RuntimeError(f"input {r.get('action','cancelled')}")
+        return r['content']['value']
+
     async def connect(
         host:str='', # Gateway: empty for the local default, a `gateways.toml` name, or a URL
         kernel:str='', # Kernel id (or unique prefix) to attach to; empty creates a fresh kernel
@@ -43,13 +52,13 @@ def mk_server(c:Client):
     async def execute(
         code:str, # Python/IPython code to run
     ):
-        "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run). An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
+        "Run `code` in the current kernel, keeping state across calls (imports, variables, monkeypatches, cached objects). With no kernel connected, one is auto-created first (default gateway, startup.py and inspectors run). An auto-created kernel is scoped to the conversation: it stops when the conversation ends or when `connect` moves elsewhere; use `connect` for a kernel that should outlive the conversation. Kernel input prompts use the MCP client's elicitation UI. Password prompts are refused. If the reply says the kernel died, `connect` again. Image outputs (plots etc.) come back as image blocks, resized to a token-friendly size, each preceded by its `<media id=...>` tag."
         pre = ''
-        async with alock:   # parallel first calls must not each create a kernel
+        async with alock:
             if not c.kc:
                 banner = await c.connect(auto=True)
                 if not c.quiet: pre = banner + '\n'
-        r = await c.execute_outs(code)
+        r = await c.execute_outs(code, on_stdin=_input)
         if isinstance(r, str): return pre + r
         res = merge_media(render_text(r, tb_maxlen=MAXLEN), output_parts(Message(msg_type='code', output=r)))
         if isinstance(res, str): return pre + res
@@ -80,7 +89,8 @@ def mk_server(c:Client):
     if not c.quiet:
         connect.__doc__ += " The startup output also appears in the reply."
         execute.__doc__ += " The connect banner - kernel id and startup output - is prepended to that first reply: read it."
-    return MCPServer('clikernel', [connect, execute, list_kernels, stop_kernel, restart, interrupt], version=__version__)
+    srv = MCPServer('clikernel', [connect, execute, list_kernels, stop_kernel, restart, interrupt], version=__version__)
+    return srv
 
 
 # %% ../nbs/01_mcp.ipynb #3b90f0e8

@@ -106,6 +106,12 @@ class Client:
         self.kc.start_channels()
         await self.kc.wait_for_ready(timeout=30)
 
+    def _startkw(self):
+        "Creation kwargs for a local kernel: the conversation's cwd and env, with quiet advertised as CLIKERNEL_QUIET"
+        env = dict(os.environ)
+        if self.quiet: env['CLIKERNEL_QUIET'] = '1'
+        return dict(cwd=os.getcwd(), env=env)
+
 # %% ../nbs/00_core.ipynb #94497e4a
 @patch
 async def _setup(self:Client):
@@ -139,7 +145,7 @@ async def connect(self:Client, host='', kernel='', auto=False):
         await self._use(mgr, kid)
         self.made = False
         return f'connected to existing kernel {kid} on {url}' + note
-    kw = dict(cwd=os.getcwd(), env=dict(os.environ)) if not host else {}   # the default gateway is local by definition: kernels start where, and as, the conversation lives (cwd and environment - so kernel-side tools that key state to the conversation, like llmdojo's doc-state, resolve it correctly)
+    kw = self._startkw() if not host else {}   # the default gateway is local by definition: kernels start where, and as, the conversation lives (cwd and environment - so kernel-side tools that key state to the conversation, like llmdojo's doc-state, resolve it correctly)
     kid = await mgr.start_kernel(**kw)
     await self._use(mgr, kid)
     self.made = True
@@ -148,10 +154,10 @@ async def connect(self:Client, host='', kernel='', auto=False):
     return f'created kernel {kid} on {url}' + (f'\n{out}' if out.strip() and not self.quiet else '') + note
 
 @patch
-async def execute_outs(self:Client, code):
+async def execute_outs(self:Client, code, **kw):
     "Run `code` in the current kernel; nbformat-style output dicts (or a protocol note string)"
     if not self.kc: return 'no kernel: call `connect` first'
-    try: return await self.kc.exec_outs(code)
+    try: return await self.kc.exec_outs(code, **kw)
     except DeadKernelError: return 'NOTE: the kernel process died. `connect` to create or attach to another.'
 
 @patch
@@ -198,7 +204,7 @@ async def restart(self:Client):
             return f'restart failed ({e.message}); the kernel is still listed: retry, `stop` it, or `connect` for a fresh one'
         old,kw = self.kid,{}
         await self.kc.aclose()
-        if self.mgr.base_url == resolve('', self.cfgdir)[0]: kw = dict(cwd=os.getcwd(), env=dict(os.environ))
+        if self.mgr.base_url == resolve('', self.cfgdir)[0]: kw = self._startkw()
         await self._use(self.mgr, await self.mgr.start_kernel(**kw))
         self.made = True
         out = await self._setup()
@@ -220,3 +226,13 @@ async def aclose(self:Client):
     "Drop connections; kernels are left exactly as they are"
     if self.kc: await self.kc.aclose()
     self.mgr,self.kc,self.kid = None,None,None
+
+# %% ../nbs/00_core.ipynb #6559aa40
+@patch
+async def __aenter__(self:Client): return self
+
+@patch
+async def __aexit__(self:Client, *exc):
+    "Stop the current kernel if this client created it (an attached kernel is left as found), then drop connections"
+    if self.made and self.kid: await self.stop()
+    await self.aclose()

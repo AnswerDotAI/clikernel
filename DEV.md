@@ -7,14 +7,14 @@ The README documents what clikernel does; this file records the architecture, th
 Two processes, one resident and one per-conversation:
 
 - **A gateway runs all the time** ([rustygate](https://github.com/AnswerDotAI/rustygate); the `rustygate` binary; default `127.0.0.1:8787`; run it via launchd/systemd — an install helper is a next step). Kernels live in the gateway and persist until explicitly stopped. Nothing else is resident.
-- **clikernel is a stdio MCP CLI** that Claude Code (or any MCP host) launches per conversation and kills with it, like any MCP CLI. It is a translator: MCP-speak on one side, gateway-speak (the Jupyter kernels HTTP/websocket API, via jupyasyncclient) on the other. Its only state is a pointer to the current kernel. It never creates or kills a kernel except when a tool call says to — with one scoped exception: `execute` with no kernel connected auto-creates one, and that auto kernel is stopped by the client's next `connect` or on the way out at stdin EOF.
+- **clikernel is a stdio MCP CLI** that an MCP host launches per conversation. It translates between MCP and the Jupyter HTTP/websocket API through jupyasyncclient. Its durable state is one pointer to the current kernel. `execute` with no kernel connected auto-creates a conversation-scoped kernel; explicit kernels persist until `stop_kernel`.
 
-The MCP tools mirror the gateway's existing API plus one composite:
+The MCP tools mirror the gateway's existing API:
 
-- `connect(host='', kernel='')` — resolve `host` (empty = the default local gateway; a name = a `gateways.toml` entry; a URL = itself). With `kernel`: attach to that existing kernel as found, running nothing. Without: create a fresh kernel, run `startup.py` in it, install `inspectors.py`, and return the new id plus the startup output — the id is what a later conversation reconnects with. On the default (empty-host) gateway, creation passes the conversation's cwd and environment, so the kernel starts where, and as, the conversation lives - relative paths work, and kernel-side tools that key state to the conversation (llmdojo's doc-state resolves it from `CLAUDE_PROJECT_DIR` etc.) see the right identity. Named/URL gateways get neither (local paths and env mean nothing on a remote host).
+- `connect(host='', kernel='')` — resolve `host` (empty = the default local gateway; a name = a `gateways.toml` entry; a URL = itself). With `kernel`: attach to that existing kernel as found, running nothing. Without: create a fresh kernel, run `startup.py` in it, install `inspectors.py`, and return the new id plus the startup output — the id is what a later conversation reconnects with. On the default gateway, creation passes the conversation's cwd and environment; named/URL gateways get neither because local paths and env mean nothing on a remote host.
 - `list_kernels`, `stop_kernel`, `restart`, `interrupt` — straight translations of the gateway's lifecycle API, except that `restart` also re-delivers `startup.py` and `inspectors.py` on kernels this client created (`Client.made`), returning them to their as-created state; an attached kernel restarts bare, as found.
-- `execute` — the one composite: send `execute_request` with `allow_stdin=False`, collect iopub until idle, convert with `fastcore.nbio.msgs2outs`, render with `render_outs` (concise text, ANSI-stripped, capped tracebacks). `Client.execute_outs` is the same pipeline stopped at the output dicts, for frontends that need more than text: the MCP frontend feeds it to aidialog's `output_parts`/`merge_media`, so image outputs return as MCP image blocks (gated, resized to `im_max`, `<media id=...>`-tagged) with the rendered text as the final text block; text-only results stay plain strings. With no kernel connected, `execute` first auto-connects (bare: the default gateway) and prepends the connect banner to the reply.
-- `--quiet` on `clikernel-mcp` builds the client quiet (`Client(quiet=True)`): startup still runs, but its output stays out of `connect` and `restart` replies, and an auto-connecting `execute` prepends nothing. The `connect` and `execute` tool descriptions are composed with the same switch, so quiet tools never promise what quiet replies withhold. For hosts whose sessions should not see the banner (e.g. codex).
+- `execute` — run one jupywire `run` and render its nbformat outputs. Its `on_stdin` callback maps each `input_request` to `srv.elicit`, and jupywire sends the returned value as the correctly parented `input_reply`. Repeated prompts stay inside the same tool call. A callback error interrupts the blocked kernel run. With no kernel connected, `execute` first auto-connects and prepends the connect banner. Ordinary `Client.execute` supplies no stdin callback and still fails fast with `StdinNotImplementedError`.
+- `--quiet` on `clikernel-mcp` builds the client quiet (`Client(quiet=True)`): startup still runs, but its output stays out of `connect` and `restart` replies, and an auto-connecting `execute` prepends nothing. The `connect` and `execute` tool descriptions are composed with the same switch, so quiet tools never promise what quiet replies withhold.
 
 ## Decisions and why
 
@@ -23,7 +23,7 @@ The MCP tools mirror the gateway's existing API plus one composite:
 - **One protocol per side.** MCP to the model; the Jupyter dialect to every gateway, local or remote. Local and remote differ only by URL.
 - **"kernel", not "session".** "Session" already means two things in Jupyter (the REST doc↔kernel binding, and the wire-protocol client id that reply routing uses). Models also have exactly the right priors about "kernel".
 - **No MCP instructions/banner machinery.** Usage is taught by skill text (`skill.py`, and the harness-side persistent-python skill). Startup output returns as the `connect` call's result — the model reads it at the moment it matters.
-- **Tokens never travel as tool arguments** (tool args persist in transcripts and model context). `gateways.toml` maps gateway names to `url` + `token`/`token_env`. The default local gateway is loopback TCP and needs none.
+- **Secrets never travel through kernel input over MCP.** Password-marked `input_request` messages are refused before clikernel calls elicitation. `gateways.toml` maps gateway names to `url` plus `token` or `token_env`; the default local gateway needs neither.
 - **Per-conversation process = conversation scoping for free.** No MCP session minting, no daemon bookkeeping.
 
 ## The inspector contract (v1's, verbatim)
@@ -44,7 +44,7 @@ Notebooks are the tests (`nbdev-test`); demos spawn a rustygate on its own port 
 - **launchd/systemd install helper** for the resident gateway.
 - **Idle reaping** of forgotten kernels, gateway-side, with age/idle info in `list_kernels`.
 - **v1 leftovers**: `stream.py` (a self-contained JSON-lines worker protocol used by teleprint) ships unchanged for now; the former iversonnb kernels migrated: jnb's J kernel now rides kernmini, and aplnb's APL kernel will follow.
-- **2026-07-28 MCP era**: direct remote MCP (a solveit instance serving clikernel tools itself), MRTR for `input()`, tasks for long cells — the upgrade checklist lives in mcpmini's DEV.md.
+- **2026-07-28 MCP era**: direct remote MCP, MRTR for server-initiated interaction, and tasks for long cells. The upgrade checklist lives in mcpmini's `DEV.md`.
 
 ## Ship
 
