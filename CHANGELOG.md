@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.8
+
+### New Features
+
+- Stream worker iterates run() directly ([#46](https://github.com/AnswerDotAI/clikernel/pull/46)), thanks to [@jph00](https://github.com/jph00)
+
+
 ## 0.2.7
 
 ### New Features
