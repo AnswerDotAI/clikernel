@@ -22,9 +22,8 @@ def _emit(obj):
 
 async def _do_exec(kc, req):
     rid = req.get('id')
-    def _out(m):
+    async for m in kc.run(req['code']):
         if m['msg_type'] in OUTPUT_MSGS: _emit(dict(ev='out', id=rid, output=msg2out(m)))
-    await kc.run(req['code'], on_output=_out)
     _emit({'ev':'done','id':rid})
 
 async def _do_complete(kc, req):
