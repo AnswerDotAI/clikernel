@@ -17,7 +17,7 @@ classifiers = [
 
 dependencies = [
   "fastcore>=2.2.2",
-  "jupyasyncclient>=0.2.9",
+  "jupyasyncclient>=0.2.10",
   "fastspec>=0.2.2",
   "mcpmini>=0.0.3",
   "aidialog>=0.0.7",
