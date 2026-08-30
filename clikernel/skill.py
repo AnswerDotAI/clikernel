@@ -4,17 +4,17 @@ Prefer it over one-off Python scripts (`python -c`, shell heredocs). Prefer in-k
 
 # Starting and stopping
 
-The first `execute` creates a kernel and reports what it imported: read that banner, it says what to do next. That kernel stops when the conversation ends. Use a bare `connect` instead when the kernel should stay running afterwards, and tell the user its id.
+The first `py` creates a kernel and reports what it imported: read that banner, it says what to do next. That kernel stops when the conversation ends, as does any kernel `create` makes unless it was created with `autoclose=false`. Use `create(dlgname, autoclose=false)` when a kernel should stay running afterwards, and tell the user its id — that only helps on a gateway that itself keeps running, so mention it if the reply shows a conversation-started gateway.
 
-To continue earlier work, or to use the user's solveit kernel, `list_kernels` then `connect` with the id. Attaching runs no setup: the kernel's live state is the point.
+To continue earlier work, or to use the user's solveit kernel, `list_kernels` then `use_kernel` with the id. Attaching runs no setup and claims no ownership: the kernel's live state is the point, and it is never stopped for you.
 
-`restart` gives a fresh interpreter under the same id, so redo any setup. `interrupt` stops a long `execute` and keeps state. If a reply says the kernel has stopped, `connect` again. If `connect` fails, the gateway server is not running: tell the user rather than working around it.
+`restart` gives a fresh interpreter under the same id; startup re-runs in kernels this conversation created, so redo everything else. `interrupt` stops a long `py` and keeps state. If a reply says the kernel is gone, the next `py` starts a fresh one.
 
-Remote gateways are the same verbs with a `host`, named in `~/.config/clikernel/gateways.toml`.
+Remote gateways are the same tools with a `host` argument on `list_kernels`, `use_kernel`, and `create`, named in `~/.config/clikernel/gateways.toml`. After selecting with a host, plain `py` runs there until the next selection.
 
 # Working in it
 
-- Magics work as written. `%cd` expands `~` and is the way to change directory: prefer it over `os.chdir`.
+- Magics work as written, including `%%bash` for shell work. `%cd` expands `~` and is the way to change directory: prefer it over `os.chdir`.
 - Only the last expression in a cell displays. `print(...)` any earlier value you need to see.
 - Everything a cell outputs lands in the conversation. Be selective: `len(v)` first, then decide what to show.
 - Don't re-run an `import` already run this session. If a name raises `NameError`, the kernel restarted or is newly attached: redo setup.
