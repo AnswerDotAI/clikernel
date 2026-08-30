@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.9
+
+### Breaking Changes
+
+- Replace the Jupyter-protocol client with a stdio MCP router over rustygate ([#47](https://github.com/AnswerDotAI/clikernel/pull/47)), thanks to [@jph00](https://github.com/jph00)
+
+
 ## 0.2.8
 
 ### New Features
