@@ -1,6 +1,6 @@
 """The stream-protocol frontend: the service on stdin/stdout for token-reading clients
 
-The `clikernel` command: the delimiter-framed stdin/stdout protocol v1 established (documented in the README, rationale unchanged — a client that reads stdout as tokens wants no echo, a cheap ack byte, and a per-process random delimiter to read until). The protocol machinery ports from v1 verbatim; underneath, the process is now a thin client of a gateway kernel. Run bare it creates a kernel and stops it again on exit — whoever ran the command made that decision by running it — while `--kernel` attaches to an existing kernel and leaves it exactly as found. Ctrl-C during a long cell translates into a kernel interrupt, jupyter-console style, instead of killing the process.
+The `clikernel` command: the delimiter-framed stdin/stdout protocol v1 established (documented in the README, rationale unchanged — a client that reads stdout as tokens wants no echo, a cheap ack byte, and a per-process random delimiter to read until). The protocol machinery ports from v1 verbatim; underneath, the process is now one MCP session on a gateway. Run bare it creates a kernel and stops it again on exit — whoever ran the command made that decision by running it — while `--kernel` attaches to an existing kernel and leaves it exactly as found. Ctrl-C during a long cell translates into a kernel interrupt, jupyter-console style, instead of killing the process.
 
 Docs: https://AnswerDotAI.github.io/clikernel/cli.html.md"""
 
@@ -13,7 +13,7 @@ __all__ = ['fmt_error', 'serve_stream', 'main']
 import asyncio, secrets, signal, string, sys, termios, threading, traceback, tty
 from fastcore.utils import *
 from fastcore.script import call_parse
-from .core import Client
+from .core import Gateway, default_gateway, resolve, session_defaults
 
 
 # %% ../nbs/02_cli.ipynb #d8413fff
@@ -129,21 +129,25 @@ def main(
     loop = asyncio.new_event_loop()
     threading.Thread(target=loop.run_forever, daemon=True).start()
     def run(coro): return asyncio.run_coroutine_threadsafe(coro, loop).result()
-    c = Client()
-    info = run(c.connect(host, kernel))
+    async def _open():
+        if not host: return await default_gateway()
+        url, token, verify = resolve(host)
+        return await Gateway(url, token, verify).initialize(session_defaults(local=False)), None
+    g, child = run(_open())
+    info = run(g.text('use_kernel', kernel=kernel) if kernel else g.text('py', code=''))
     stop = False
     def execute(code):
         nonlocal stop
         if code.strip() in _EXITS:
             stop = True
             return ''
-        fut = asyncio.run_coroutine_threadsafe(c.execute(code), loop)
+        fut = asyncio.run_coroutine_threadsafe(g.text('py', code=code), loop)
         while True:
             try: return fut.result()
-            except KeyboardInterrupt: asyncio.run_coroutine_threadsafe(c.interrupt(), loop)
+            except KeyboardInterrupt: asyncio.run_coroutine_threadsafe(g.call('interrupt'), loop)
     try: serve_stream(execute, info=info, should_exit=lambda: stop)
     finally:
-        if not kernel: run(c.stop())   # created for this run, cleaned up by this run
-        run(c.aclose())
+        run(g.aclose())   # ends the session: the kernel this run created dies with it, an attached one survives
+        if child: child.stop()
         loop.call_soon_threadsafe(loop.stop)
 
