@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.11
+
+### New Features
+
+- Rewrite module and API docs for clarity, harden session cleanup with try/finally and grouped errors, negotiate MCP protocol version ([#49](https://github.com/AnswerDotAI/clikernel/issues/49))
+
+
 ## 0.2.10
 
 ### New Features
