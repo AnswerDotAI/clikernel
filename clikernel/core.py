@@ -1,6 +1,12 @@
 """Gateway naming, startup delivery, and MCP sessions on rustygate gateways
 
-clikernel is the LLM side of a two-process design: a gateway ([rustygate](https://github.com/AnswerDotAI/rustygate)) hosts the kernels and serves MCP itself at `POST /mcp`; clikernel starts and stops with each conversation and routes the harness's stdio MCP to gateways. This module is the client layer: gateway naming from `gateways.toml`, the per-session kernel-creation defaults (the conversation's cwd and environment, with `startup.py` and `inspectors.py` composed into one startup source), `Gateway` — one MCP session on one gateway — and `default_gateway`, which finds the local gateway or starts an owned child that lives exactly as long as the conversation. Kernel lifecycle policy lives gateway-side: ending a session stops the kernels it created with autoclose and nothing else.
+[Rustygate](https://github.com/AnswerDotAI/rustygate) hosts kernels and serves MCP requests at `POST /mcp`. Clikernel runs alongside it for the duration of a conversation. It routes the LLM client's stdio MCP requests to gateways.
+
+This module connects to those gateways. `gateways.toml` gives them names. `session_defaults` supplies kernel startup code and, for a local gateway, the conversation's working directory and environment. It combines `startup.py` and `inspectors.py` into source that can run on another machine.
+
+`Gateway` represents one MCP session on one gateway. `default_gateway` connects to the local gateway or starts a child process if it cannot connect. The caller must stop any returned child. The MCP router does this when the conversation ends.
+
+Rustygate tracks the session's current kernel and which kernels it created. Ending a session stops its autoclose kernels. It leaves other kernels running. Stopping an owned gateway process stops all kernels in that process.
 
 Docs: https://AnswerDotAI.github.io/clikernel/core.html.md"""
 
@@ -21,16 +27,16 @@ from . import __version__
 DEFAULT_URL = 'http://127.0.0.1:8787'
 
 def cfg_dir():
-    "The clikernel config directory"
+    "Return the clikernel configuration directory."
     return xdg_config_home()/'clikernel'
 
 def gateways(cfgdir=None):
-    "Named gateways from `gateways.toml`: `{name: {url, token | token_env, verify}}`"
+    "Read named gateways as `{name: {url, token | token_env, verify}}` from `gateways.toml`."
     p = (Path(cfgdir) if cfgdir else cfg_dir())/'gateways.toml'
     return tomllib.loads(p.read_text()).get('gateways', {}) if p.exists() else {}
 
 def resolve(host='', cfgdir=None):
-    "`(url, token, verify)` for `host`: empty = the default local gateway, a URL = itself, else a `gateways.toml` name"
+    "Resolve an empty host, URL, or configured gateway name to `(url, token, verify)`."
     if not host: return os.environ.get('CLIKERNEL_HOST', DEFAULT_URL), os.environ.get('CLIKERNEL_TOKEN'), True
     if '://' in host: return host, os.environ.get('CLIKERNEL_TOKEN'), True
     cfgdir = Path(cfgdir) if cfgdir else cfg_dir()
@@ -41,7 +47,7 @@ def resolve(host='', cfgdir=None):
 
 # %% ../nbs/00_core.ipynb #0d846754
 def _startup_src(src, path):
-    "The startup file's source wrapped so `__file__` is bound to its path during the run, and absent after"
+    "Wrap startup source with `__file__` set to its path during execution and deleted afterwards."
     return f'''__file__ = {str(path)!r}
 try: exec(compile({src!r}, __file__, 'exec'))
 finally: del __file__'''
@@ -93,7 +99,7 @@ def _inspector_setup(src):
 
 # %% ../nbs/00_core.ipynb #1362e6ce
 def startup_src(cfgdir=None):
-    "The composed startup source for one kernel: `startup.py` wrapped, then the inspector installer"
+    "Combine wrapped `startup.py` source with the inspector installer, in that order."
     d = Path(cfgdir) if cfgdir else cfg_dir()
     parts = []
     if (p := d/'startup.py').exists(): parts.append(_startup_src(p.read_text(), p))
@@ -101,7 +107,7 @@ def startup_src(cfgdir=None):
     return '\n'.join(parts)
 
 def session_defaults(cfgdir=None, quiet=False, local=True):
-    "The `rustygate` initialize extension: startup source and quiet, plus cwd and env for a local gateway"
+    "Return startup and quiet settings for rustygate initialization. Local sessions also include cwd and env."
     d = dict(startup=startup_src(cfgdir), quiet=quiet)
     if local:
         d['cwd'] = os.getcwd()
@@ -110,7 +116,7 @@ def session_defaults(cfgdir=None, quiet=False, local=True):
 
 # %% ../nbs/00_core.ipynb #10ed59fc
 class Gateway:
-    "One MCP session on one rustygate: initialize with session defaults, call tools, DELETE at close"
+    "Open an MCP session on rustygate, call its tools, and end the session with DELETE."
     def __init__(self,
         url,          # The gateway base URL, e.g. 'http://127.0.0.1:8787'
         token=None,   # Gateway auth token, sent as a bearer token
@@ -121,17 +127,18 @@ class Gateway:
         self.tr = HTTPTransport(f"{url.rstrip('/')}/mcp", token=token, http_client=client)
 
     async def rpc(self, method, **params):
-        "One JSON-RPC request, returning its result and raising on a protocol-level error"
+        "Send a JSON-RPC request and return its result. Raise `RuntimeError` for protocol errors."
         self._id += 1
         r = await self.tr.send(jreq(method, self._id, **params))
         if 'error' in r: raise RuntimeError(f"{r['error']['code']}: {r['error']['message']}")
         return r['result']
 
     async def initialize(self, defaults=None):
-        "Open the MCP session, sending `defaults` as the `rustygate` extension; returns self"
+        "Open the MCP session with `defaults` in the `rustygate` extension. Return self."
         await self.tr.start()
         self.info = await self.rpc('initialize', protocolVersion='2025-11-25', capabilities={},
             clientInfo=dict(name='clikernel', version=__version__), rustygate=defaults or {})
+        self.tr.proto = self.info['protocolVersion']
         await self.tr.send(jreq('notifications/initialized'))
         return self
 
@@ -139,23 +146,23 @@ class Gateway:
     async def call(self, name, **args): return await self.rpc('tools/call', name=name, arguments=args)
 
     async def text(self, name, **args):
-        "A tool call's text blocks joined; raises on `isError`"
+        "Join a tool reply's text blocks. Raise `RuntimeError` for `isError` replies."
         r = await self.call(name, **args)
         t = ''.join(c.get('text','') for c in r['content'] if c['type'] == 'text')
         if r.get('isError'): raise RuntimeError(t)
         return t
 
     async def aclose(self):
-        "End the MCP session — the gateway stops the kernels this session created with autoclose — and drop the connection"
-        await self.tr.delete()
-        await self.tr.aclose()
+        "Request session termination and close the HTTP connection."
+        try: await self.tr.delete()
+        finally: await self.tr.aclose()
 
 # %% ../nbs/00_core.ipynb #0d054375
 async def default_gateway(
     cfgdir=None,  # Config dir for `session_defaults` (the standard one if None)
     quiet=False,  # Keep startup output out of replies?
 ):
-    "An initialized `Gateway` on the default local gateway, plus the owned child rustygate when none was running (else None)"
+    "Return an initialized `Gateway` and its new child process, or None if it reused a gateway. The caller must stop any child."
     url, token, verify = resolve('', cfgdir)
     d = session_defaults(cfgdir, quiet)
     try: return await Gateway(url, token, verify).initialize(d), None

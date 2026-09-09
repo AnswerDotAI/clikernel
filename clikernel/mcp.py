@@ -1,6 +1,10 @@
-"""The MCP frontend: a stdio router over rustygate gateways
+"""Route stdio MCP requests to rustygate gateways
 
-The frontend Claude Code launches per conversation. `Router` speaks stdio MCP to the harness and forwards to gateways: rustygate serves the tool surface itself, so the router defines no tools — it fetches the local gateway's `tools/list`, adds a `host` parameter to the kernel-selection tools, and forwards `tools/call` verbatim to the right gateway, ids intact so cancellation maps through. `main` serves a `Router` on stdio and ends every gateway session on the way out — the DELETE that stops each session's autoclose kernels, and the owned child gateway with them.
+Claude Code starts `clikernel-mcp` for each conversation. Its `Router` accepts MCP messages over stdio and sends tool calls to rustygate gateways. Rustygate implements the tools. The router gets their schemas from the local gateway and adds `host` to `list_kernels`, `use_kernel`, and `create`.
+
+Each host has a separate gateway session. The router remembers one current host for calls without an explicit `host`. It removes `host` before forwarding a call but preserves the JSON-RPC request id. Cancellation notifications also retain their original ids.
+
+`main` runs the router and closes its gateway sessions on exit. Closing a session sends an HTTP DELETE. The gateway then stops the kernels that session created with autoclose. If the router started a child gateway, it stops that process too.
 
 Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
 
@@ -23,7 +27,7 @@ HOST_PARAM = {'type': 'string', 'description': 'Gateway to target: a gateways.to
 HOSTED = ('list_kernels', 'use_kernel', 'create')
 
 class Router:
-    "Forward the harness's stdio MCP to rustygate gateways: one `Gateway` session per host, one current"
+    "Route stdio MCP to rustygate with one session per host and one current host."
     def __init__(self,
         cfgdir=None,  # Config dir for `session_defaults` and `gateways.toml` (the standard one if None)
         quiet=False,  # Keep startup output out of replies?
@@ -31,7 +35,7 @@ class Router:
         self.cfgdir,self.quiet,self.sessions,self.cur,self.child = cfgdir,quiet,{},'',None
 
     async def session(self, host=''):
-        "The initialized `Gateway` for `host`, made on first use; empty means the default local gateway"
+        "Return the session for `host`, initializing it on first use. Empty `host` selects the default local gateway."
         if host not in self.sessions:
             if host:
                 url, token, verify = resolve(host, self.cfgdir)
@@ -40,15 +44,18 @@ class Router:
         return self.sessions[host]
 
     async def aclose(self):
-        "End every gateway session — stopping each one's autoclose kernels — then the owned child gateway"
-        for s in self.sessions.values(): await s.aclose()
-        if self.child: self.child.stop()
+        "Close all sessions and their autoclose kernels, then stop any owned gateway."
+        try: results = await asyncio.gather(*(s.aclose() for s in self.sessions.values()), return_exceptions=True)
+        finally:
+            if self.child: self.child.stop()
+        errors = [r for r in results if isinstance(r, BaseException)]
+        if errors: raise BaseExceptionGroup('MCP session cleanup failed', errors)
 
 
 # %% ../nbs/01_mcp.ipynb #79da6a3e
 @patch
 async def tools(self:Router):
-    "The local gateway's tools, with `host` added to the kernel-selection tools"
+    "Return the local gateway's tools with `host` added to `list_kernels`, `use_kernel`, and `create`."
     ts = await (await self.session()).tools()
     for t in ts:
         if t['name'] in HOSTED: t['inputSchema'].setdefault('properties', {})['host'] = dict(HOST_PARAM)
@@ -56,7 +63,7 @@ async def tools(self:Router):
 
 @patch
 async def dispatch(self:Router, msg, requester=None):
-    "One JSON-RPC message from the harness: initialize and ping answered here, the tool surface forwarded"
+    "Answer initialization and ping locally. Forward tool calls to gateways."
     method,id = msg.get('method'), msg.get('id')
     try:
         if method == 'initialize':
@@ -83,7 +90,7 @@ async def dispatch(self:Router, msg, requester=None):
 def main(
     quiet:store_true=False,  # Keep startup output out of replies
 ):
-    "The `clikernel-mcp` console script: the router on stdio"
+    "Run `clikernel-mcp` as a stdio server."
     async def _main():
         router = Router(quiet=quiet)
         try: await serve_stdio(router)

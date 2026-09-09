@@ -19,7 +19,7 @@ dependencies = [
   "fastcore>=2.2.2",
   "jupyasyncclient>=0.2.10",
   "jupywire>=0.1.9",
-  "mcpmini>=0.0.4",
+  "mcpmini>=0.0.5",
   "rustygate>=0.1.11",
   "httpx",
 ]

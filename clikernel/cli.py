@@ -147,7 +147,9 @@ def main(
             except KeyboardInterrupt: asyncio.run_coroutine_threadsafe(g.call('interrupt'), loop)
     try: serve_stream(execute, info=info, should_exit=lambda: stop)
     finally:
-        run(g.aclose())   # ends the session: the kernel this run created dies with it, an attached one survives
-        if child: child.stop()
-        loop.call_soon_threadsafe(loop.stop)
+        try: run(g.aclose())
+        finally:
+            try:
+                if child: child.stop()
+            finally: loop.call_soon_threadsafe(loop.stop)
 
