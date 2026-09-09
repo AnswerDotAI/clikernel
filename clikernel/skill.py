@@ -14,6 +14,12 @@ Remote gateways are the same tools with a `host` argument on `list_kernels`, `us
 
 # Working in it
 
+For native Luau work use `lua(code=...)`, or `create(dlgname, language="luau")` for a named kernel. The first `lua` auto-starts Luau when no kernel is selected, with the same autoclose rules as Python. There is one current kernel: `py` requires Python and `lua` requires Luau, so a mismatch errors rather than switching. Use `use_kernel` or `create` to select deliberately. Omit `language` to reuse an existing binding unchanged or default a new one to Python; an explicit language must match an existing binding. A `dlgname` execution override changes only that call. These rules also apply on named remote gateways.
+
+Start native work with `lua(code="help()")` for the bundled guide and examples, or `lua(code='help("ex.edit_file")')` for function details.
+
+Luau has persistent globals, cell-local `local` variables, and native `rg.search`, `rg.find`, `fs.read_text`, `ex.edit_text`, `ex.view_file`/`ex.edit_file`, `ex.view_cell`/`ex.edit_cell`, `os.execute`, and `io.popen` APIs. File edits use arrays of command fields (like Python exhash tuples); `{inplace=false}` previews. Shell commands use `/bin/sh -c`; pipes support read/lines/write/flush/close and persist until closed. Interrupts terminate subprocess groups and close outstanding pipes. Python startup/inspectors and IPython magics do not apply to Luau. The following guidance is for Python:
+
 - Magics work as written, including `%%bash` for shell work. `%cd` expands `~` and is the way to change directory: prefer it over `os.chdir`.
 - Only the last expression in a cell displays. `print(...)` any earlier value you need to see.
 - Everything a cell outputs lands in the conversation. Be selective: `len(v)` first, then decide what to show.

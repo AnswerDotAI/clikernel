@@ -33,8 +33,9 @@ def resolve(host='', cfgdir=None):
     "`(url, token, verify)` for `host`: empty = the default local gateway, a URL = itself, else a `gateways.toml` name"
     if not host: return os.environ.get('CLIKERNEL_HOST', DEFAULT_URL), os.environ.get('CLIKERNEL_TOKEN'), True
     if '://' in host: return host, os.environ.get('CLIKERNEL_TOKEN'), True
+    cfgdir = Path(cfgdir) if cfgdir else cfg_dir()
     g = gateways(cfgdir).get(host)
-    if g is None: raise ValueError(f"unknown gateway {host!r}: not a URL, and not in {cfg_dir()/'gateways.toml'}")
+    if g is None: raise ValueError(f"unknown gateway {host!r}: not a URL, and not in {cfgdir/'gateways.toml'}")
     return g['url'], g.get('token') or os.environ.get(g.get('token_env','')) or None, g.get('verify', True)
 
 
