@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.10
+
+### New Features
+
+- Add Luau kernel support: lua tool and create(language=...), Python-only startup/inspectors ([#48](https://github.com/AnswerDotAI/clikernel/issues/48))
+
+
 ## 0.2.9
 
 ### Breaking Changes
