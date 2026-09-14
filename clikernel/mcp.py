@@ -89,10 +89,11 @@ async def dispatch(self:Router, msg, requester=None):
 @call_parse
 def main(
     quiet:store_true=False,  # Keep startup output out of replies
+    cfgdir:str=None,  # Directory holding `startup.py`, `inspectors.py`, and `gateways.toml`; `~/.config/clikernel/` if unset
 ):
     "Run `clikernel-mcp` as a stdio server."
     async def _main():
-        router = Router(quiet=quiet)
+        router = Router(cfgdir, quiet=quiet)
         try: await serve_stdio(router)
         finally: await router.aclose()
     asyncio.run(_main())
