@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.12
+
+### New Features
+
+- Replace py/lua tools with explicit create(kernel=...) and exec(code=...); default Python `ast_node_interactivity` to all ([#51](https://github.com/AnswerDotAI/clikernel/issues/51))
+- Add --cfgdir flag to clikernel-mcp ([#50](https://github.com/AnswerDotAI/clikernel/pull/50)), thanks to [@ncoop57](https://github.com/ncoop57)
+
+
 ## 0.2.11
 
 ### New Features
