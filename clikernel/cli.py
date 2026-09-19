@@ -1,6 +1,8 @@
 """The stream-protocol frontend: the service on stdin/stdout for token-reading clients
 
-The `clikernel` command: the delimiter-framed stdin/stdout protocol v1 established (documented in the README, rationale unchanged — a client that reads stdout as tokens wants no echo, a cheap ack byte, and a per-process random delimiter to read until). The protocol machinery ports from v1 verbatim; underneath, the process is now one MCP session on a gateway. Run bare it creates a kernel and stops it again on exit — whoever ran the command made that decision by running it — while `--kernel` attaches to an existing kernel and leaves it exactly as found. Ctrl-C during a long cell translates into a kernel interrupt, jupyter-console style, instead of killing the process.
+The `clikernel` command connects a text-stream client to one gateway kernel. Requests and replies use a per-process delimiter. Input is not echoed. A `.` line acknowledges each accepted request before its result arrives.
+
+Running the command without arguments creates a Python kernel and stops it on exit. `--kernel` attaches to an existing kernel and leaves it running. Ctrl-C during execution interrupts the kernel without ending the CLI process.
 
 Docs: https://AnswerDotAI.github.io/clikernel/cli.html.md"""
 
@@ -38,6 +40,23 @@ def fmt_error(tag, text):
     return f"<{tag}>\n{text}{nl}</{tag}>"
 
 
+# %% ../nbs/02_cli.ipynb #5649e04a
+def _response(line, stdin, delim, execute):
+    "Return (body, accepted), acknowledging accepted requests before execution."
+    line = line.rstrip("\n")
+    if line == delim: return fmt_error("protocol-error", "no multiline request is open: start one with a bare `--` line"), False
+    if line == _MULTILINE:
+        code, err = _read_block(stdin, delim)
+        if err: return fmt_error("protocol-error", err), False
+    elif line.startswith('%%'):
+        return fmt_error("protocol-error",
+            f"a %% cell magic needs a multiline request; send it as (flush-left):\n    --\n    {line}\n    <rest of cell>\n    {delim}"), False
+    else: code = line
+    print(".", flush=True)
+    try: return execute(code), True
+    except BaseException: return fmt_error("internal-error", traceback.format_exc()), True
+
+# %% ../nbs/02_cli.ipynb #8c3decee
 def _write_response(delim, body=None):
     if body: print(body, end='' if body.endswith('\n') else '\n', flush=True)
     print(delim, flush=True)
@@ -51,6 +70,7 @@ def _next_line(stdin):
             if stdin.isatty(): raise
 
 
+# %% ../nbs/02_cli.ipynb #bd6301f5
 def _tty_clear(stream, idx, mask, cc=None):
     "Clear `mask` bits in termios field `idx` when `stream` is a TTY, with optional `cc` char overrides; returns state for `_restore_termios`"
     if not stream.isatty(): return None
@@ -69,12 +89,13 @@ def _restore_termios(state):
     if state: termios.tcsetattr(state[0], termios.TCSADRAIN, state[1])
 
 
+# %% ../nbs/02_cli.ipynb #967cb6e3
 def serve_stream(
     execute,          # Callable `code -> str`: run one request, returning the rendered response body
     info="",          # Server info announced between the loading lines (forwarded to mcp `instructions`)
     should_exit=None  # Callable checked after each request; truthy stops the worker
 ):
-    "Run the stream protocol on stdin/stdout: announce `info` and the session delimiter, then ack each request with '.', respond with `execute(code)`, and end each response with the delimiter"
+    "Serve delimiter-framed requests on stdin/stdout."
     # ONLCR off so protocol output stays bare LF; ECHO off (echoed input corrupts the protocol) and ICANON
     # off (canonical mode drops bytes past MAX_CANON with BEL spam; VMIN/VTIME make non-canonical reads
     # return per byte; ISIG stays on so ^C still interrupts)
@@ -92,25 +113,9 @@ def serve_stream(
         while True:
             line = _next_line(sys.stdin)
             if not line: break
-            line = line.rstrip("\n")
-            if line == delim:
-                _write_response(delim, fmt_error("protocol-error", "no multiline request is open: start one with a bare `--` line"))
-                continue
-            if line == _MULTILINE:
-                code, err = _read_block(sys.stdin, delim)
-                if err:
-                    _write_response(delim, fmt_error("protocol-error", err))
-                    continue
-            elif line.startswith('%%'):
-                _write_response(delim, fmt_error("protocol-error",
-                    f"a %% cell magic needs a multiline request; send it as (flush-left):\n    --\n    {line}\n    <rest of cell>\n    {delim}"))
-                continue
-            else: code = line
-            print(".", flush=True)
-            try: body = execute(code)
-            except BaseException: body = fmt_error("internal-error", traceback.format_exc())
+            body, accepted = _response(line, sys.stdin, delim, execute)
             _write_response(delim, body)
-            if should_exit and should_exit(): break
+            if accepted and should_exit and should_exit(): break
     finally:
         _restore_termios(echo_state)
         _restore_termios(output_state)
@@ -134,14 +139,14 @@ def main(
         url, token, verify = resolve(host)
         return await Gateway(url, token, verify).initialize(session_defaults(local=False)), None
     g, child = run(_open())
-    info = run(g.text('use_kernel', kernel=kernel) if kernel else g.text('py', code=''))
+    info = run(g.text('use_kernel', kernel=kernel) if kernel else g.text('create', kernel='ipymini'))
     stop = False
     def execute(code):
         nonlocal stop
         if code.strip() in _EXITS:
             stop = True
             return ''
-        fut = asyncio.run_coroutine_threadsafe(g.text('py', code=code), loop)
+        fut = asyncio.run_coroutine_threadsafe(g.text('exec', code=code), loop)
         while True:
             try: return fut.result()
             except KeyboardInterrupt: asyncio.run_coroutine_threadsafe(g.call('interrupt'), loop)

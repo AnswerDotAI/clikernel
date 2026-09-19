@@ -12,19 +12,13 @@ Two processes, one hosting and one routing:
 What the router supplies per session, as the `rustygate` extension of MCP `initialize`:
 
 - **Session defaults** (`session_defaults`): the conversation's cwd and environment for the local gateway (named hosts get neither — local paths and env mean nothing remotely), `quiet`, and the startup source.
-- **Startup delivery**: `startup.py` and `inspectors.py` composed into one Python program the gateway runs in each Python kernel the session creates, before any user code. Output returns in the creating reply; an error stops the fresh kernel and fails the call. The gateway re-runs it on `restart` of a Python kernel the session created. It never runs this program in Luau.
+- **Startup delivery**: Python defaults, `startup.py`, and `inspectors.py` composed into one program the gateway runs in each Python kernel the session creates, before any user code. The default is `ast_node_interactivity='all'`; user startup can override it. Output returns in the creating reply; an error stops the fresh kernel and fails the call. The gateway re-runs it on `restart` of a Python kernel the session created. It never runs this program in Luau.
 
-Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikernel always sends on the way out): kernels this session created with autoclose die — the bare-`py` auto kernel, and `create`'s default — and nothing else does. `default_gateway` makes the local gateway exist: probe the default URL, else start an owned child on a free port, stopped again at close with everything in it. A conversation that wants a persistent kernel therefore needs a gateway that persists (`autoclose=false` on a resident or named gateway).
+Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikernel always sends on the way out). The gateway stops kernels this session created with autoclose, enabled by default. It does not stop kernels merely selected, reused, or created with `autoclose=false`. `default_gateway` makes the local gateway exist: probe the default URL, else start an owned child on a free port, stopped again at close with everything in it. A conversation that wants a persistent kernel needs a gateway that persists (`autoclose=false` on a resident or named gateway).
 
 ## Decisions and why
 
-- **Python and Luau, one routing path.** Rustygate defines `py`, `lua`, and
-  `create(dlgname, language?)`; the router forwards them unchanged. Either execution
-  tool auto-creates its language when no kernel is current. There is one current
-  kernel per gateway session; mismatches error, not switch. Creation defaults new
-  kernels to Python, reuses existing bindings unchanged when language is omitted,
-  and rejects explicit language conflicts. Named hosts use the same rules. The
-  CLI's existing Python stream interface is unchanged.
+- **Kernel selection and execution are separate.** Rustygate defines `create(kernel?, dlgname?, autoclose?)` and `exec(code, dlgname?)`. The router forwards them unchanged. A new kernel requires an explicit implementation (`ipymini`, `luau`, or `miniapl`). Omit `kernel` only to reuse an existing binding. An explicit implementation must match that binding. Creation and selection return usage guidance. Execution requires a selected kernel or an existing dialog binding and never creates or switches kernels. Named hosts use the same rules. The CLI creates ipymini explicitly unless `--kernel` selects an existing kernel. Its stream protocol is unchanged.
 
 - **Kernel state, execution, rendering, and lifecycle live gateway-side.** One implementation serves MCP hosts, notebooks, and the CLI; clikernel holds nothing worth preserving, so its lifecycle (and upgrades) never cost anyone their session. The router adds only what a fixed endpoint cannot: naming, startup delivery, conversation scope.
 - **One tool wording.** Descriptions come from the gateway's `tools/list`, so a gateway upgrade changes what every harness sees with no clikernel release, and the two surfaces cannot drift.

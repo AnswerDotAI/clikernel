@@ -99,9 +99,9 @@ def _inspector_setup(src):
 
 # %% ../nbs/00_core.ipynb #1362e6ce
 def startup_src(cfgdir=None):
-    "Combine wrapped `startup.py` source with the inspector installer, in that order."
+    "Build Python defaults, user startup, and inspector setup, in that order."
     d = Path(cfgdir) if cfgdir else cfg_dir()
-    parts = []
+    parts = ["get_ipython().ast_node_interactivity = 'all'"]
     if (p := d/'startup.py').exists(): parts.append(_startup_src(p.read_text(), p))
     if (p := d/'inspectors.py').exists(): parts.append(_inspector_setup(p.read_text()))
     return '\n'.join(parts)
@@ -117,7 +117,8 @@ def session_defaults(cfgdir=None, quiet=False, local=True):
 # %% ../nbs/00_core.ipynb #10ed59fc
 class Gateway:
     "Open an MCP session on rustygate, call its tools, and end the session with DELETE."
-    def __init__(self,
+    def __init__(
+        self,
         url,          # The gateway base URL, e.g. 'http://127.0.0.1:8787'
         token=None,   # Gateway auth token, sent as a bearer token
         verify=True,  # Verify TLS certificates?
@@ -142,20 +143,26 @@ class Gateway:
         await self.tr.send(jreq('notifications/initialized'))
         return self
 
-    async def tools(self): return (await self.rpc('tools/list'))['tools']
-    async def call(self, name, **args): return await self.rpc('tools/call', name=name, arguments=args)
+# %% ../nbs/00_core.ipynb #2dd701f9
+@patch
+async def tools(self:Gateway): return (await self.rpc('tools/list'))['tools']
+@patch
+async def call(self:Gateway, name, **args): return await self.rpc('tools/call', name=name, arguments=args)
 
-    async def text(self, name, **args):
-        "Join a tool reply's text blocks. Raise `RuntimeError` for `isError` replies."
-        r = await self.call(name, **args)
-        t = ''.join(c.get('text','') for c in r['content'] if c['type'] == 'text')
-        if r.get('isError'): raise RuntimeError(t)
-        return t
+@patch
+async def text(self:Gateway, name, **args):
+    "Join a tool reply's text blocks. Raise `RuntimeError` for `isError` replies."
+    r = await self.call(name, **args)
+    t = ''.join(c.get('text','') for c in r['content'] if c['type'] == 'text')
+    if r.get('isError'): raise RuntimeError(t)
+    return t
 
-    async def aclose(self):
-        "Request session termination and close the HTTP connection."
-        try: await self.tr.delete()
-        finally: await self.tr.aclose()
+# %% ../nbs/00_core.ipynb #dac7dd25
+@patch
+async def aclose(self:Gateway):
+    "Request session termination and close the HTTP connection."
+    try: await self.tr.delete()
+    finally: await self.tr.aclose()
 
 # %% ../nbs/00_core.ipynb #0d054375
 async def default_gateway(

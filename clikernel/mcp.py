@@ -28,7 +28,8 @@ HOSTED = ('list_kernels', 'use_kernel', 'create')
 
 class Router:
     "Route stdio MCP to rustygate with one session per host and one current host."
-    def __init__(self,
+    def __init__(
+        self,
         cfgdir=None,  # Config dir for `session_defaults` and `gateways.toml` (the standard one if None)
         quiet=False,  # Keep startup output out of replies?
     ):
@@ -43,15 +44,6 @@ class Router:
             else: self.sessions[host], self.child = await default_gateway(self.cfgdir, self.quiet)
         return self.sessions[host]
 
-    async def aclose(self):
-        "Close all sessions and their autoclose kernels, then stop any owned gateway."
-        try: results = await asyncio.gather(*(s.aclose() for s in self.sessions.values()), return_exceptions=True)
-        finally:
-            if self.child: self.child.stop()
-        errors = [r for r in results if isinstance(r, BaseException)]
-        if errors: raise BaseExceptionGroup('MCP session cleanup failed', errors)
-
-
 # %% ../nbs/01_mcp.ipynb #79da6a3e
 @patch
 async def tools(self:Router):
@@ -61,6 +53,7 @@ async def tools(self:Router):
         if t['name'] in HOSTED: t['inputSchema'].setdefault('properties', {})['host'] = dict(HOST_PARAM)
     return ts
 
+# %% ../nbs/01_mcp.ipynb #e1b057dd
 @patch
 async def dispatch(self:Router, msg, requester=None):
     "Answer initialization and ping locally. Forward tool calls to gateways."
@@ -84,6 +77,16 @@ async def dispatch(self:Router, msg, requester=None):
             return await s.tr.send(msg)
         return jerr(id, -32601, f'method not found: {method}')
     except Exception as e: return None if id is None else jerr(id, -32603, str(e))
+
+# %% ../nbs/01_mcp.ipynb #f72f6253
+@patch
+async def aclose(self:Router):
+    "Close all sessions and their autoclose kernels, then stop any owned gateway."
+    try: results = await asyncio.gather(*(s.aclose() for s in self.sessions.values()), return_exceptions=True)
+    finally:
+        if self.child: self.child.stop()
+    errors = [r for r in results if isinstance(r, BaseException)]
+    if errors: raise BaseExceptionGroup('MCP session cleanup failed', errors)
 
 # %% ../nbs/01_mcp.ipynb #3b90f0e8
 @call_parse
