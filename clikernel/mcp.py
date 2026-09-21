@@ -14,13 +14,12 @@ Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
 __all__ = ['HOST_PARAM', 'HOSTED', 'Router', 'main']
 
 # %% ../nbs/01_mcp.ipynb #28c42902
-import asyncio
+import asyncio, httpx
 from fastcore.utils import *
 from fastcore.script import call_parse, store_true
 from mcpmini.core import serve_stdio, jresp, jerr
 from .core import Gateway, default_gateway, resolve, session_defaults
 from . import __version__
-
 
 # %% ../nbs/01_mcp.ipynb #76e2d782
 HOST_PARAM = {'type': 'string', 'description': 'Gateway to target: a gateways.toml name, or empty for the default local gateway'}
@@ -72,9 +71,14 @@ async def dispatch(self:Router, msg, requester=None):
             args = msg['params'].setdefault('arguments', {})
             has_host = 'host' in args
             host = args.pop('host', '') or ''
-            s = await self.session(host if has_host else self.cur)
+            h = host if has_host else self.cur
+            s = await self.session(h)
             if has_host and msg['params']['name'] in ('use_kernel', 'create'): self.cur = host
-            return await s.tr.send(msg)
+            try: return await s.tr.send(msg)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code != 404: raise
+            del self.sessions[h]  # a restarted gateway answers 404 for a session id it no longer knows
+            return await (await self.session(h)).tr.send(msg)
         return jerr(id, -32601, f'method not found: {method}')
     except Exception as e: return None if id is None else jerr(id, -32603, str(e))
 
