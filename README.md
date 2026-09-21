@@ -32,11 +32,11 @@ claude mcp add clikernel -- clikernel-mcp
 Choose a kernel, then execute code:
 
 ``` python
-create(kernel="ipymini")
+create(kernel="py")
 exec(code="6*7")
 ```
 
-Use `kernel="luau"` for bundled Luau, or `kernel="miniapl"` for APL when miniapl is installed on the gateway. `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
+Use `kernel="luau"` for bundled Luau, or `kernel="apl"` for APL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
 
 ## Configuration
 

@@ -139,7 +139,7 @@ def main(
         url, token, verify = resolve(host)
         return await Gateway(url, token, verify).initialize(session_defaults(local=False)), None
     g, child = run(_open())
-    info = run(g.text('use_kernel', kernel=kernel) if kernel else g.text('create', kernel='ipymini'))
+    info = run(g.text('use_kernel', kernel=kernel) if kernel else g.text('create', kernel='py'))
     stop = False
     def execute(code):
         nonlocal stop

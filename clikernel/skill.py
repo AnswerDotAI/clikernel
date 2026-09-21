@@ -4,9 +4,9 @@ Prefer it over one-off Python scripts (`python -c`, shell heredocs). Prefer in-k
 
 # Starting and stopping
 
-Call `create(kernel="ipymini")` before executing Python code. Creation reports what startup imported: read that banner, it says what to do next. New kernels require an explicit implementation. Add `dlgname` to bind a kernel to a dialog. Omit `kernel` only to reuse an existing binding. An explicit implementation must match that binding.
+Call `create(kernel="py")` before executing Python code. Creation reports what startup imported: read that banner, it says what to do next. New kernels require an explicit implementation. Add `dlgname` to bind a kernel to a dialog. Omit `kernel` only to reuse an existing binding. An explicit implementation must match that binding.
 
-A kernel this conversation creates stops when the conversation ends, unless created with `autoclose=false`. Use `create(kernel="ipymini", dlgname="work", autoclose=false)` when a kernel should stay running afterwards, and tell the user its id. This requires a gateway that keeps running. Mention it if the reply shows a conversation-started gateway.
+A kernel this conversation creates stops when the conversation ends, unless created with `autoclose=false`. Use `create(kernel="py", dlgname="work", autoclose=false)` when a kernel should stay running afterwards, and tell the user its id. This requires a gateway that keeps running. Mention it if the reply shows a conversation-started gateway.
 
 To continue earlier work, or to use the user's solveit kernel, `list_kernels` then `use_kernel` with the id. Attaching runs no setup and claims no ownership: the kernel's live state is the point, and it is never stopped for you.
 
@@ -18,7 +18,7 @@ Remote gateways are the same tools with a `host` argument on `list_kernels`, `us
 
 Run code with `exec(code=...)` in the selected kernel. For native Luau work, select `create(kernel="luau")` first. The same execution tool and autoclose rules apply to every implementation. A `dlgname` execution override uses an existing binding for that call without changing the current selection. These rules also apply on named remote gateways.
 
-For APL, use `create(kernel="miniapl")` then `exec(code="avg←+/÷≢ ⋄ avg 2 4 9")`. Miniapl must be installed on the gateway's PATH. Python startup and inspectors do not run in APL.
+For APL, use `create(kernel="apl")` then `exec(code="avg←+/÷≢ ⋄ avg 2 4 9")`. `basedpl` must be installed in the gateway's environment. It provides the `apl` kernelspec. Python startup and inspectors do not run in APL.
 
 Start native work with `exec(code="help()")` for the bundled guide and examples, or `exec(code='help("ex.edit_file")')` for function details.
 
