@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.13
+
+### New Features
+
+- Switch ipymini to py ([#52](https://github.com/AnswerDotAI/clikernel/issues/52))
+
+
 ## 0.2.12
 
 ### New Features
