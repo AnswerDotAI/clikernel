@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.14
+
+### Bugs Squashed
+
+- Open a new gateway session after rustygate restarts ([#53](https://github.com/AnswerDotAI/clikernel/pull/53)), thanks to [@jph00](https://github.com/jph00)
+
+
 ## 0.2.13
 
 ### New Features
