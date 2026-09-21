@@ -37,6 +37,4 @@ d = { 'settings': { 'branch': 'main',
                                'clikernel.mcp.Router.dispatch': ('mcp.html#router.dispatch', 'clikernel/mcp.py'),
                                'clikernel.mcp.Router.session': ('mcp.html#router.session', 'clikernel/mcp.py'),
                                'clikernel.mcp.Router.tools': ('mcp.html#router.tools', 'clikernel/mcp.py'),
-                               'clikernel.mcp.main': ('mcp.html#main', 'clikernel/mcp.py')},
-            'clikernel.skill': {},
-            'clikernel.stream': {}}}
+                               'clikernel.mcp.main': ('mcp.html#main', 'clikernel/mcp.py')}}}
