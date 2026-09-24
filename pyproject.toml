@@ -23,6 +23,7 @@ dependencies = [
   "rustygate>=0.1.22",
   "ipymini>=0.1.23",
   "httpx",
+  "ipython",
 ]
 
 [project.optional-dependencies]

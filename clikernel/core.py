@@ -2,7 +2,7 @@
 
 [Rustygate](https://github.com/AnswerDotAI/rustygate) hosts kernels and serves MCP requests at `POST /mcp`. Clikernel runs alongside it for the duration of a conversation. It routes the LLM client's stdio MCP requests to gateways.
 
-This module connects to those gateways. `gateways.toml` gives them names. `session_defaults` supplies kernel startup code and, for a local gateway, the conversation's working directory and environment. It combines `startup.py` and `inspectors.py` into source that can run on another machine.
+This module connects to those gateways. `gateways.toml` gives them names. `session_defaults` supplies kernel startup code and, for a local gateway, the conversation's working directory and environment. It sends `startup.py` as source, so it can run on another machine.
 
 `Gateway` represents one MCP session on one gateway. `default_gateway` connects to the local gateway or starts a child process if it cannot connect. The caller must stop any returned child. The MCP router does this when the conversation ends.
 
@@ -52,58 +52,12 @@ def _startup_src(src, path):
 try: exec(compile({src!r}, __file__, 'exec'))
 finally: del __file__'''
 
-# %% ../nbs/00_core.ipynb #3dbf4cb6
-_INSP_RUNNER = r'''
-import inspect as _clik_inspect
-import sys as _clik_sys
-from IPython.core.error import InputRejected
-class RuleBlock(InputRejected):
-    "Raise from an inspector to deliberately block a cell; any other inspector exception is a bug, and fails open"
-
-class _ClikInspect:
-    "Calls each inspector once per cell: 1-arg get the AST, 2-arg also the raw source"
-    def __init__(self, fs): self.fs = fs
-    def visit(self, tree):
-        fr, n = _clik_sys._getframe(), 0
-        while fr:
-            n += fr.f_code.co_name == 'run_cell_async'
-            fr = fr.f_back
-        if n > 1: return tree  # nested run_cell: cell replayed by a tool (%nbrun etc.), not typed
-        for f in self.fs:
-            try:
-                note = f(tree, _clik_src) if len(_clik_inspect.signature(f).parameters) > 1 else f(tree)
-                if note: print(note, end='')
-            except InputRejected: raise
-            except Exception as e: print(f'inspector error (cell runs anyway): {e!r}')
-        return tree
-
-def _clik_stash(info):
-    global _clik_src
-    _clik_src = info.raw_cell
-
-def _clik_install(src):
-    ns = dict(RuleBlock=RuleBlock)
-    exec(compile(src, 'inspectors.py', 'exec'), ns)
-    fs = list(ns.get('inspectors') or [])
-    if callable(ns.get('inspect')): fs.append(ns['inspect'])
-    if fs:
-        ip = get_ipython()
-        ip.events.register('pre_run_cell', _clik_stash)
-        ip.ast_transformers.append(_ClikInspect(fs))
-_clik_src = ''
-'''
-
-def _inspector_setup(src):
-    "Kernel-side source installing the inspectors defined in `src`; a load failure raises, failing the create call"
-    return _INSP_RUNNER + f'\n_clik_install({src!r})'
-
 # %% ../nbs/00_core.ipynb #1362e6ce
 def startup_src(cfgdir=None):
-    "Build Python defaults, user startup, and inspector setup, in that order."
+    "Build Python defaults and user startup, in that order."
     d = Path(cfgdir) if cfgdir else cfg_dir()
     parts = ["get_ipython().ast_node_interactivity = 'all'"]
     if (p := d/'startup.py').exists(): parts.append(_startup_src(p.read_text(), p))
-    if (p := d/'inspectors.py').exists(): parts.append(_inspector_setup(p.read_text()))
     return '\n'.join(parts)
 
 def session_defaults(cfgdir=None, quiet=False, local=True):
@@ -111,7 +65,7 @@ def session_defaults(cfgdir=None, quiet=False, local=True):
     d = dict(startup=startup_src(cfgdir), quiet=quiet)
     if local:
         d['cwd'] = os.getcwd()
-        d['env'] = dict(os.environ, CLIKERNEL_QUIET='1') if quiet else dict(os.environ)
+        d['env'] = dict(os.environ)
     return d
 
 # %% ../nbs/00_core.ipynb #10ed59fc

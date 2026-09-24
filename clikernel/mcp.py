@@ -4,6 +4,8 @@ Claude Code starts `clikernel-mcp` for each conversation. Its `Router` accepts M
 
 Each host has a separate gateway session. The router remembers one current host for calls without an explicit `host`. It removes `host` before forwarding a call but preserves the JSON-RPC request id. Cancellation notifications also retain their original ids.
 
+Before forwarding `exec`, the router checks the cell against `clikernel.rules`. Most rules add a note to the reply. Two rules block the cell, which then never reaches a gateway.
+
 `main` runs the router and closes its gateway sessions on exit. Closing a session sends an HTTP DELETE. The gateway then stops the kernels that session created with autoclose. If the router started a child gateway, it stops that process too.
 
 Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
@@ -19,6 +21,7 @@ from fastcore.utils import *
 from fastcore.script import call_parse, store_true
 from mcpmini.core import serve_stdio, jresp, jerr
 from .core import Gateway, default_gateway, resolve, session_defaults
+from .rules import scan
 from . import __version__
 
 # %% ../nbs/01_mcp.ipynb #76e2d782
@@ -30,7 +33,7 @@ class Router:
     def __init__(
         self,
         cfgdir=None,  # Config dir for `session_defaults` and `gateways.toml` (the standard one if None)
-        quiet=False,  # Keep startup output out of replies?
+        quiet=False,  # Keep startup output and rule notes out of replies?
     ):
         self.cfgdir,self.quiet,self.sessions,self.cur,self.child = cfgdir,quiet,{},'',None
 
@@ -69,16 +72,22 @@ async def dispatch(self:Router, msg, requester=None):
         if method == 'tools/list': return jresp(id, dict(tools=await self.tools()))
         if method == 'tools/call':
             args = msg['params'].setdefault('arguments', {})
+            fired = scan(args.get('code', '')) if msg['params']['name'] == 'exec' else []
+            if blocks := [r.note for r in fired if r.block]:
+                return jresp(id, dict(isError=True, content=[dict(type='text', text=' '.join(blocks)+' (If the block seems wrong here, tell your user.)')]))
             has_host = 'host' in args
             host = args.pop('host', '') or ''
             h = host if has_host else self.cur
             s = await self.session(h)
             if has_host and msg['params']['name'] in ('use_kernel', 'create'): self.cur = host
-            try: return await s.tr.send(msg)
+            try: res = await s.tr.send(msg)
             except httpx.HTTPStatusError as e:
                 if e.response.status_code != 404: raise
-            del self.sessions[h]  # a restarted gateway answers 404 for a session id it no longer knows
-            return await (await self.session(h)).tr.send(msg)
+                del self.sessions[h]  # a restarted gateway answers 404 for a session id it no longer knows
+                res = await (await self.session(h)).tr.send(msg)
+            if fired and not self.quiet and 'result' in res:
+                res['result']['content'].insert(0, dict(type='text', text=''.join(f'<note>\n{r.note}\n</note>\n' for r in fired)))
+            return res
         return jerr(id, -32601, f'method not found: {method}')
     except Exception as e: return None if id is None else jerr(id, -32603, str(e))
 
@@ -95,8 +104,8 @@ async def aclose(self:Router):
 # %% ../nbs/01_mcp.ipynb #3b90f0e8
 @call_parse
 def main(
-    quiet:store_true=False,  # Keep startup output out of replies
-    cfgdir:str=None,  # Directory holding `startup.py`, `inspectors.py`, and `gateways.toml`; `~/.config/clikernel/` if unset
+    quiet:store_true=False,  # Keep startup output and rule notes out of replies
+    cfgdir:str=None,  # Directory holding `startup.py` and `gateways.toml`; `~/.config/clikernel/` if unset
 ):
     "Run `clikernel-mcp` as a stdio server."
     async def _main():

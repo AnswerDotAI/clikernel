@@ -7,12 +7,12 @@ The README documents what clikernel does; this file records the architecture, th
 Two processes, one hosting and one routing:
 
 - **A gateway hosts the kernels and the MCP tool surface** ([rustygate](https://github.com/AnswerDotAI/rustygate); the `rustygate` binary; default `127.0.0.1:8787`). Kernels live in the gateway and persist as long as it does. Run one resident (launchd/systemd) when kernels should outlive conversations; nothing requires it.
-- **clikernel is a stdio MCP router** that an MCP host launches per conversation. `Router` forwards the harness's MCP to gateways over Streamable HTTP: one `Gateway` session per gateway, one current. It defines no tools — `tools/list` comes from the local gateway, with a `host` parameter (a `gateways.toml` name) patched onto `list_kernels`, `use_kernel`, and `create`, and `tools/call` forwarded verbatim, ids intact so cancellation notifications map through. `use_kernel` and `create` carrying a `host` move the current gateway; everything else follows it.
+- **clikernel is a stdio MCP router** that an MCP host launches per conversation. `Router` forwards the harness's MCP to gateways over Streamable HTTP: one `Gateway` session per gateway, one current. It defines no tools — `tools/list` comes from the local gateway, with a `host` parameter (a `gateways.toml` name) patched onto `list_kernels`, `use_kernel`, and `create`, and `tools/call` forwarded verbatim, ids intact so cancellation notifications map through. The one exception is `exec`, which must first pass the cell rules. `use_kernel` and `create` carrying a `host` move the current gateway; everything else follows it.
 
 What the router supplies per session, as the `rustygate` extension of MCP `initialize`:
 
 - **Session defaults** (`session_defaults`): the conversation's cwd and environment for the local gateway (named hosts get neither — local paths and env mean nothing remotely), `quiet`, and the startup source.
-- **Startup delivery**: Python defaults, `startup.py`, and `inspectors.py` composed into one program the gateway runs in each Python kernel the session creates, before any user code. The default is `ast_node_interactivity='all'`; user startup can override it. Output returns in the creating reply; an error stops the fresh kernel and fails the call. The gateway re-runs it on `restart` of a Python kernel the session created. It never runs this program in Luau.
+- **Startup delivery**: Python defaults and `startup.py` composed into one program the gateway runs in each Python kernel the session creates, before any user code. The default is `ast_node_interactivity='all'`; user startup can override it. Output returns in the creating reply; an error stops the fresh kernel and fails the call. The gateway re-runs it on `restart` of a Python kernel the session created. It never runs this program in Luau.
 
 Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikernel always sends on the way out). The gateway stops kernels this session created with autoclose, enabled by default. It does not stop kernels merely selected, reused, or created with `autoclose=false`. `default_gateway` makes the local gateway exist: probe the default URL, else start an owned child on a free port, stopped again at close with everything in it. A conversation that wants a persistent kernel needs a gateway that persists (`autoclose=false` on a resident or named gateway).
 
@@ -28,17 +28,23 @@ Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikern
 - **Secrets stay out of tool arguments.** `gateways.toml` maps gateway names to `url` plus `token` or `token_env`; the default local gateway needs neither.
 - **Per-conversation process = conversation scoping for free.** The stdio exit is the end-of-conversation signal HTTP lacks: it triggers the DELETEs and the child stop.
 
-## The inspector contract (v1's, verbatim)
+## Startup source
 
-`$XDG_CONFIG_HOME/clikernel/inspectors.py` may define `inspect` and/or a list `inspectors`. Each inspector is called once per cell before it runs: 1-arg inspectors get the cell's (transformed) AST; 2-arg ones get `(tree, src)` with the raw cell source, for lexical checks. An inspector may return a note (a string, printed before the cell's output), raise `RuleBlock` (provided in the file's namespace; the cell does not run and the block is reported), or return None. Any other exception is an inspector bug: noted, and the cell runs (fail-open — a crashed inspector must never masquerade as a policy block). A file that fails to load is fatal to kernel creation: refusing to start beats running uninspected.
+`startup.py` is sent as source (kernel-agnostic, works remotely), wrapped so `__file__` is bound to its local path during the run and removed after — matching v1's `%run -i` behavior.
 
-In v2 the inspectors run *in the kernel*, installed by source sent right after `startup.py`: a `pre_run_cell` hook stashes the raw cell source, and an AST transformer raises `InputRejected` (RuleBlock's base) to block. Delivery-by-source means the local config file governs remote kernels too.
+## Cell rules
 
-`startup.py` is likewise sent as source (kernel-agnostic, works remotely), wrapped so `__file__` is bound to its local path during the run and removed after — matching v1's `%run -i` behavior.
+`clikernel.rules` checks each `exec` cell in the router, before forwarding it. A note goes in a text block before the gateway's reply, and `--quiet` drops the notes. A blocking rule returns an error result, and the cell never reaches a gateway. Because the rules run in the router, nothing is installed in kernels, remote gateways get the same checks, and there is no plugin interface. They replaced v2's inspectors, which ran a user `inspectors.py` inside every Python kernel.
+
+The rules exist because we measured the difference against prose instructions. Standing instructions such as "always read docs first" hold for a few turns, then lose to task focus. A note that arrives in the tool result, at the moment of the mistake, gets acted on essentially every time, including mid-task where prompt text is weakest. Prohibitions with bright-line triggers bind well in prose. Anything stateful or conditional has to live in the harness, because models don't reliably track state across a long context.
+
+The router can't see which kernel will run a cell. So a rule may only match Python forms that no other kernel language produces. IPython's `!` escape fails that test: APL's `!5` (factorial) transforms into the same `get_ipython().system(...)` call. That is why `!` lines aren't blocked, and neither is Luau's `io.popen`. For the same reason, rules read only the cell's text. A rule that consulted installed packages would check the router's environment, not the kernel's.
+
+The stream CLI talks to gateways directly, so its cells get no rule checks.
 
 ## Testing
 
-Notebooks are the tests (`nbdev-test`); demos spawn a rustygate on its own port via `rustygate.tools.start_gateway`. rustygate and mcpmini are runtime dependencies — the router cannot exist without a gateway to spawn — and jupyasyncclient remains only for `stream.py`.
+Notebooks are the tests (`nbdev-test`), except that the rules' parsing edge cases are pytest checks in `tests/test_rules.py`; demos spawn a rustygate on its own port via `rustygate.tools.start_gateway`. rustygate and mcpmini are runtime dependencies — the router cannot exist without a gateway to spawn — and jupyasyncclient remains only for `stream.py`.
 
 ## Next steps (deliberately not built)
 

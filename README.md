@@ -38,12 +38,13 @@ exec(code="6*7")
 
 Use `kernel="luau"` for bundled Luau, or `kernel="apl"` for APL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
 
+The router checks each `exec` cell against built-in rules for mistakes agents often make with this toolkit. Most rules add a note to the reply, and `--quiet` leaves the notes out. Two rules always block the cell: shell access through `subprocess`, [`os.system`](https://docs.python.org/3/library/os.html#os.system) or [`os.popen`](https://docs.python.org/3/library/os.html#os.popen), and changes to `sys.path`.
+
 ## Configuration
 
-Three optional files in `$XDG_CONFIG_HOME/clikernel/` configure the router, usually under `~/.config/clikernel/`, or under the directory `clikernel-mcp --cfgdir` names:
+Two optional files in `$XDG_CONFIG_HOME/clikernel/` configure the router, usually under `~/.config/clikernel/`, or under the directory `clikernel-mcp --cfgdir` names:
 
 - `startup.py` runs in each Python kernel clikernel creates, with `__file__` set to its path. Its output appears in the reply announcing the kernel unless `--quiet` is set.
-- `inspectors.py` installs Python cell inspectors after startup. Define `inspect`, a list named `inspectors`, or both. Each inspector runs once before a cell: a one-argument inspector takes the cell’s AST, and a two-argument inspector takes the AST and raw source. Return a string to print a note before the output. Raise the provided `RuleBlock` to block execution. Other exceptions produce a warning and allow the cell to run. See [examples/inspectors.py](examples/inspectors.py).
 - `gateways.toml` names remote gateways and configures authentication without putting tokens in tool arguments:
 
 ``` toml
