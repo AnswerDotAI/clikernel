@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.15
+
+### New Features
+
+- Replace kernel-side inspectors with built-in router cell rules checking each exec cell, adding notes or blocking subprocess and sys.path ([#54](https://github.com/AnswerDotAI/clikernel/issues/54))
+
+
 ## 0.2.14
 
 ### Bugs Squashed
