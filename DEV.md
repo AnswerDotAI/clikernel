@@ -38,7 +38,7 @@ Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikern
 
 The rules exist because we measured the difference against prose instructions. Standing instructions such as "always read docs first" hold for a few turns, then lose to task focus. A note that arrives in the tool result, at the moment of the mistake, gets acted on essentially every time, including mid-task where prompt text is weakest. Prohibitions with bright-line triggers bind well in prose. Anything stateful or conditional has to live in the harness, because models don't reliably track state across a long context.
 
-The router can't see which kernel will run a cell. So a rule may only match Python forms that no other kernel language produces. IPython's `!` escape fails that test: APL's `!5` (factorial) transforms into the same `get_ipython().system(...)` call. That is why `!` lines aren't blocked, and neither is Luau's `io.popen`. For the same reason, rules read only the cell's text. A rule that consulted installed packages would check the router's environment, not the kernel's.
+The router can't see which kernel will run a cell. So a rule may only match Python forms that no other kernel language produces. IPython's `!` escape fails that test: BPL's `!5` (factorial) transforms into the same `get_ipython().system(...)` call. That is why `!` lines aren't blocked, and neither is Luau's `io.popen`. For the same reason, rules read only the cell's text. A rule that consulted installed packages would check the router's environment, not the kernel's.
 
 The stream CLI talks to gateways directly, so its cells get no rule checks.
 

@@ -67,11 +67,11 @@ def test_rules():
     assert fires(f"file_exhash(p, ('1|aa|', 's', 'x', {'y'*121!r}))", "s_long")
     assert not fires(f"file_exhash(p, ('1|aa|', 's', 'x', {'y'*120!r}))", "s_long")
 
-    # blockers: Python's own shell routes, but not `!` escapes, since the router can't tell Python from APL
+    # blockers: Python's own shell routes, but not `!` escapes, since the router can't tell Python from BPL
     assert fires("import subprocess", "shell_escape")
     assert fires("os.system('ls')", "shell_escape")
     assert fires("os.popen('ls')", "shell_escape")
-    assert not fires("!5", "shell_escape")                           # APL's factorial parses exactly like IPython's `!ls`
+    assert not fires("!5", "shell_escape")                           # BPL's factorial parses exactly like IPython's `!ls`
     assert not fires("io.popen('ls')", "shell_escape")               # Luau's popen
     assert fires("import subprocess.x", "shell_escape")          # submodule spellings
     assert fires("from subprocess.x import y", "shell_escape")

@@ -14,9 +14,9 @@ To continue earlier work or use the user's solveit kernel: `list_kernels`, then 
 
 Remote gateways (named in `~/.config/clikernel/gateways.toml`): same tools, with `host=` on `list_kernels`/`use_kernel`/`create`; all other rules unchanged. After selecting with a host, plain `exec` runs there until the next selection.
 
-# Luau and APL
+# Luau and BPL
 
-`create(kernel="luau")`/`create(kernel="apl")`: same `exec` and autoclose rules; no Python startup or magics. Each `create` reply gives the language basics; Luau's `exec(code="help()")` is its full native API guide (`help("ex.edit_file")` for one function). APL needs `basedpl` in the gateway's environment, which provides the `apl` kernelspec.
+`create(kernel="luau")`/`create(kernel="bpl")`: same `exec` and autoclose rules; no Python startup or magics. Each `create` reply gives the language basics; Luau's `exec(code="help()")` is its full native API guide (`help("ex.edit_file")` for one function). BPL needs `basedpl` in the gateway's environment, which provides the `bpl` kernelspec.
 
 # Python
 
