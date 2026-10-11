@@ -16,7 +16,7 @@ Docs: https://AnswerDotAI.github.io/clikernel/core.html.md"""
 __all__ = ['DEFAULT_URL', 'cfg_dir', 'gateways', 'resolve', 'startup_src', 'session_defaults', 'Gateway', 'default_gateway']
 
 # %% ../nbs/00_core.ipynb #2b3b7f4a
-import os, tomllib, httpx
+import os, inspect, tomllib, httpx
 from fastcore.utils import *
 from fastcore.xdg import xdg_config_home
 from mcpmini.core import HTTPTransport, jreq
@@ -46,18 +46,31 @@ def resolve(host='', cfgdir=None):
 
 
 # %% ../nbs/00_core.ipynb #0d846754
-def _startup_src(src, path):
+def _with_file(src, path):
     "Wrap startup source with `__file__` set to its path during execution and deleted afterwards."
     return f'''__file__ = {str(path)!r}
 try: exec(compile({src!r}, __file__, 'exec'))
 finally: del __file__'''
 
+# %% ../nbs/00_core.ipynb #b0dd40c1
+def _top_level_display(shell):
+    "Make `ast_node_interactivity='all'` display top-level expressions only."
+    import ast
+    run = shell.run_ast_nodes
+    async def run_ast_nodes(nodelist, cell_name, interactivity='last_expr', **kwargs):
+        if interactivity != 'all': return await run(nodelist, cell_name, interactivity, **kwargs)
+        for n in nodelist:
+            if await run([n], cell_name, 'last' if isinstance(n, ast.Expr) else 'none', **kwargs): return True
+        return False
+    shell.run_ast_nodes = run_ast_nodes
+    shell.ast_node_interactivity = 'all'
+
 # %% ../nbs/00_core.ipynb #1362e6ce
 def startup_src(cfgdir=None):
     "Build Python defaults and user startup, in that order."
     d = Path(cfgdir) if cfgdir else cfg_dir()
-    parts = ["get_ipython().ast_node_interactivity = 'all'"]
-    if (p := d/'startup.py').exists(): parts.append(_startup_src(p.read_text(), p))
+    parts = [inspect.getsource(_top_level_display) + '_top_level_display(get_ipython())\ndel _top_level_display']
+    if (p := d/'startup.py').exists(): parts.append(_with_file(p.read_text(), p))
     return '\n'.join(parts)
 
 def session_defaults(cfgdir=None, quiet=False, local=True):

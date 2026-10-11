@@ -55,6 +55,17 @@ async def tools(self:Router):
         if t['name'] in HOSTED: t['inputSchema'].setdefault('properties', {})['host'] = dict(HOST_PARAM)
     return ts
 
+# %% ../nbs/01_mcp.ipynb #6da913bf
+def _cap_images(content, budget=5 << 20):
+    "`content`, with each image that would take the total base64 image data past `budget` bytes replaced by a line of text."
+    left,res = budget,[]
+    for b in content:
+        if b['type'] == 'image':
+            if (n := len(b['data'])) > left: b = dict(type='text', text=f"[{b['mimeType']} image of {n:,} bytes omitted: images in one reply are limited to {budget:,} bytes]")
+            else: left -= n
+        res.append(b)
+    return res
+
 # %% ../nbs/01_mcp.ipynb #e1b057dd
 @patch
 async def dispatch(self:Router, msg, requester=None):
@@ -83,10 +94,11 @@ async def dispatch(self:Router, msg, requester=None):
             try: res = await s.tr.send(msg)
             except httpx.HTTPStatusError as e:
                 if e.response.status_code != 404: raise
-                del self.sessions[h]  # a restarted gateway answers 404 for a session id it no longer knows
+                del self.sessions[h]
                 res = await (await self.session(h)).tr.send(msg)
-            if fired and not self.quiet and 'result' in res:
-                res['result']['content'].insert(0, dict(type='text', text=''.join(f'<note>\n{r.note}\n</note>\n' for r in fired)))
+            if 'result' in res:
+                content = res['result']['content'] = _cap_images(res['result']['content'])
+                if fired and not self.quiet: content.insert(0, dict(type='text', text=''.join(f'<note>\n{r.note}\n</note>\n' for r in fired)))
             return res
         return jerr(id, -32601, f'method not found: {method}')
     except Exception as e: return None if id is None else jerr(id, -32603, str(e))

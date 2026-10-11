@@ -21,7 +21,7 @@ Remote gateways (named in `~/.config/clikernel/gateways.toml`): same tools, with
 # Python
 
 - Magics work as written, incl. `%%bash`. Change directory with `%cd` (expands `~`), not `os.chdir`.
-- clikernel-created Python kernels display every expression result (`ast_node_interactivity='all'`); user startup can override.
+- clikernel-created Python kernels display the result of every top-level expression. Expressions inside loops and other blocks don't display. User startup can override this.
 - All cell output lands in the conversation: `len(v)` first, then choose what to show.
 - Don't re-run imports already run. A `NameError` for a name you set up means the kernel restarted or is newly attached: redo setup.
 - After `nbdev-export` or any edit to an imported module, `importlib.reload` it and re-import held names: `from x import y` keeps the old object; a `@patch`ed method refreshes on reload (the patch writes onto the shared class). Restart only when a class you hold instances of was redefined. Check what's loaded by calling it, never with `inspect.getsource` (reads the file on disk).
