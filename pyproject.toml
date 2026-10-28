@@ -20,7 +20,7 @@ dependencies = [
   "jupyasyncclient>=0.2.10",
   "jupywire>=0.1.9",
   "mcpmini>=0.0.5",
-  "rustygate>=0.1.22",
+  "rustygate>=0.1.25",
   "ipymini>=0.1.23",
   "httpx",
   "ipython",
@@ -42,6 +42,7 @@ Documentation = "https://AnswerDotAI.github.io/clikernel/"
 [project.scripts]
 clikernel = "clikernel.cli:main"
 clikernel-mcp = "clikernel.mcp:main"
+clikernel-hook = "clikernel.mcp:hook"
 
 [project.entry-points.nbdev]
 clikernel = "clikernel._modidx:d"

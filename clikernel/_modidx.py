@@ -38,4 +38,6 @@ d = { 'settings': { 'branch': 'main',
                                'clikernel.mcp.Router.session': ('mcp.html#router.session', 'clikernel/mcp.py'),
                                'clikernel.mcp.Router.tools': ('mcp.html#router.tools', 'clikernel/mcp.py'),
                                'clikernel.mcp._cap_images': ('mcp.html#_cap_images', 'clikernel/mcp.py'),
+                               'clikernel.mcp.agent_input': ('mcp.html#agent_input', 'clikernel/mcp.py'),
+                               'clikernel.mcp.hook': ('mcp.html#hook', 'clikernel/mcp.py'),
                                'clikernel.mcp.main': ('mcp.html#main', 'clikernel/mcp.py')}}}

@@ -36,7 +36,9 @@ create(kernel="py")
 exec(code="6*7")
 ```
 
-Use `kernel="luau"` for bundled Luau, or `kernel="bpl"` for BPL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
+Use `kernel="luau"` for bundled Luau, or `kernel="bpl"` for BPL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. In the main conversation, `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
+
+In Claude Code, subagents share the current kernel unless `clikernel-hook` is registered as a `PreToolUse` hook. With the hook, each subagent’s first `exec` creates a kernel of its own. See [Subagent kernels](https://AnswerDotAI.github.io/clikernel/mcp.html#subagent-kernels) for the settings entry.
 
 The router checks each `exec` cell against built-in rules for mistakes agents often make with this toolkit. Most rules add a note to the reply, and `--quiet` leaves the notes out. Two rules always block the cell: shell access through `subprocess`, [`os.system`](https://docs.python.org/3/library/os.html#os.system) or [`os.popen`](https://docs.python.org/3/library/os.html#os.popen), and changes to `sys.path`.
 

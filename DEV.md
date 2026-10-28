@@ -14,7 +14,9 @@ What the router supplies per session, as the `rustygate` extension of MCP `initi
 - **Session defaults** (`session_defaults`): the conversation's cwd and environment for the local gateway (named hosts get neither — local paths and env mean nothing remotely), `quiet`, and the startup source.
 - **Startup delivery**: Python defaults and `startup.py` composed into one program the gateway runs in each Python kernel the session creates, before any user code. The default displays the result of each top-level expression only (`_top_level_display`). User startup can override it. Output returns in the creating reply; an error stops the fresh kernel and fails the call. The gateway re-runs it on `restart` of a Python kernel the session created. It never runs this program in Luau.
 
-Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikernel always sends on the way out). The gateway stops kernels this session created with autoclose, enabled by default. It does not stop kernels merely selected, reused, or created with `autoclose=false`. `default_gateway` makes the local gateway exist: probe the default URL, else start an owned child on a free port, stopped again at close with everything in it. A conversation that wants a persistent kernel needs a gateway that persists (`autoclose=false` on a resident or named gateway).
+Subagents get kernels of their own through a Claude Code hook, not the router. Claude Code sends every subagent's calls through the conversation's one connection, and only its `PreToolUse` hooks see which agent made a call. `clikernel-hook` copies the agent's id into the call's arguments as `agent`, which the router forwards like any other argument. The gateway keeps a current kernel for each agent within a session.
+
+Lifecycle is the gateway's rule, applied at session end (the HTTP DELETE clikernel always sends on the way out). The gateway stops kernels this session created with autoclose, enabled by default. It does not stop kernels merely selected, reused, or created with `autoclose=false`. A gateway started with `--cull-idle SECONDS` also stops kernels left idle that long, whenever that happens. `default_gateway` makes the local gateway exist: probe the default URL, else start an owned child on a free port, stopped again at close with everything in it. A conversation that wants a persistent kernel needs a gateway that persists (`autoclose=false` on a resident or named gateway).
 
 ## Decisions and why
 
@@ -50,7 +52,7 @@ Notebooks are the tests (`nbdev-test`), except that the rules' parsing edge case
 
 - **Unix sockets**: `file://` URLs for gateways; socket dir `xdg_runtime_dir() or xdg_state_home()/'rustygate'`; needs unix-socket support in the gateway and httpx first. Until then, loopback TCP.
 - **launchd/systemd install helper** for the resident gateway.
-- **Idle reaping** of forgotten kernels, gateway-side, with age/idle info in `list_kernels`.
+- **Age and idle time in `list_kernels`**, for each kernel.
 - **v1 leftovers**: `stream.py` (a self-contained JSON-lines worker protocol used by teleprint) ships unchanged for now; the former iversonnb kernels migrated: jnb's J kernel now rides kernmini, and aplnb's APL kernel will follow.
 - **2026-07-28 MCP era**: direct remote MCP, MRTR for server-initiated interaction, and tasks for long cells. The upgrade checklist lives in mcpmini's `DEV.md`.
 
