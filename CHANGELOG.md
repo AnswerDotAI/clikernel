@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.16
+
+### New Features
+
+- Add clikernel-hook PreToolUse hook giving Claude Code subagents their own kernels ([#57](https://github.com/AnswerDotAI/clikernel/issues/57))
+- Display only top-level expression results in Python kernels and cap total image data per tool result at 5 MB to avoid stdio disconnects ([#56](https://github.com/AnswerDotAI/clikernel/issues/56))
+- Switch to BPL ([#55](https://github.com/AnswerDotAI/clikernel/issues/55))
+
+
 ## 0.2.15
 
 ### New Features
