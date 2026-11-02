@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.17
+
+### New Features
+
+- Preserve obj.full in Python output metadata via ipymini display hook; rename `_top_level_display` to `_python_display`; bump rustygate, ipymini ([#58](https://github.com/AnswerDotAI/clikernel/issues/58))
+
+
 ## 0.2.16
 
 ### New Features
