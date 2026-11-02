@@ -53,9 +53,11 @@ try: exec(compile({src!r}, __file__, 'exec'))
 finally: del __file__'''
 
 # %% ../nbs/00_core.ipynb #b0dd40c1
-def _top_level_display(shell):
-    "Make `ast_node_interactivity='all'` display top-level expressions only."
+def _python_display(shell):
+    "Display top-level expressions and preserve full result metadata."
     import ast
+    from ipymini.term.display import enable_full_metadata
+    enable_full_metadata(shell.display_formatter)
     run = shell.run_ast_nodes
     async def run_ast_nodes(nodelist, cell_name, interactivity='last_expr', **kwargs):
         if interactivity != 'all': return await run(nodelist, cell_name, interactivity, **kwargs)
@@ -69,7 +71,7 @@ def _top_level_display(shell):
 def startup_src(cfgdir=None):
     "Build Python defaults and user startup, in that order."
     d = Path(cfgdir) if cfgdir else cfg_dir()
-    parts = [inspect.getsource(_top_level_display) + '_top_level_display(get_ipython())\ndel _top_level_display']
+    parts = [inspect.getsource(_python_display) + '_python_display(get_ipython())\ndel _python_display']
     if (p := d/'startup.py').exists(): parts.append(_with_file(p.read_text(), p))
     return '\n'.join(parts)
 

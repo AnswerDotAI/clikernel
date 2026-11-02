@@ -20,8 +20,8 @@ dependencies = [
   "jupyasyncclient>=0.2.10",
   "jupywire>=0.1.9",
   "mcpmini>=0.0.5",
-  "rustygate>=0.1.25",
-  "ipymini>=0.1.23",
+  "rustygate>=0.1.27",
+  "ipymini>=0.1.26",
   "httpx",
   "ipython",
 ]
