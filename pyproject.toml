@@ -21,7 +21,7 @@ dependencies = [
   "jupywire>=0.1.9",
   "mcpmini>=0.0.5",
   "rustygate>=0.1.27",
-  "ipymini>=0.1.26",
+  "ipymini>=0.1.28",
   "httpx",
   "ipython",
 ]
