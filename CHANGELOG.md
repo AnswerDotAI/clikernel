@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.18
+
+### New Features
+
+- Track current gateway per subagent, route cancellations to the handling gateway, and send Claude Code session id to named hosts ([#60](https://github.com/AnswerDotAI/clikernel/issues/60))
+
+
 ## 0.2.17
 
 ### New Features
