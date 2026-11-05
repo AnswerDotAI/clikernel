@@ -2,7 +2,7 @@
 
 Claude Code starts `clikernel-mcp` for each conversation. Its `Router` accepts MCP messages over stdio and sends tool calls to rustygate gateways. Rustygate implements the tools. The router gets their schemas from the local gateway and adds `host` to `list_kernels`, `use_kernel`, and `create`.
 
-Each host has a separate gateway session. The router remembers one current host for calls without an explicit `host`. It removes `host` before forwarding a call but preserves the JSON-RPC request id. Cancellation notifications also retain their original ids.
+Each host has a separate gateway session. Calls without an explicit `host` go to their caller's current host. The router keeps one for the main conversation and one for each subagent that `clikernel-hook` names with `agent`; a subagent starts on the main conversation's current host. The router removes `host` before forwarding a call but preserves the JSON-RPC request id. Cancellation notifications also retain their original ids.
 
 Before forwarding `exec`, the router checks the cell against `clikernel.rules`. Most rules add a note to the reply. Two rules block the cell, which then never reaches a gateway.
 
@@ -29,13 +29,13 @@ HOST_PARAM = {'type': 'string', 'description': 'Gateway to target: a gateways.to
 HOSTED = ('list_kernels', 'use_kernel', 'create')
 
 class Router:
-    "Route stdio MCP to rustygate with one session per host and one current host."
+    "Route stdio MCP to rustygate with one session per host and a current host for each caller."
     def __init__(
         self,
         cfgdir=None,  # Config dir for `session_defaults` and `gateways.toml` (the standard one if None)
         quiet=False,  # Keep startup output and rule notes out of replies?
     ):
-        self.cfgdir,self.quiet,self.sessions,self.cur,self.child = cfgdir,quiet,{},'',None
+        self.cfgdir,self.quiet,self.sessions,self.cur,self.inflight,self.child = cfgdir,quiet,{},{},{},None
 
     async def session(self, host=''):
         "Return the session for `host`, initializing it on first use. Empty `host` selects the default local gateway."
@@ -77,7 +77,8 @@ async def dispatch(self:Router, msg, requester=None):
             return jresp(id, dict(protocolVersion=msg['params'].get('protocolVersion', '2025-06-18'), capabilities=dict(tools={}),
                 serverInfo=dict(name='clikernel', version=__version__), instructions=info.get('instructions')))
         if id is None:
-            if method == 'notifications/cancelled': await (await self.session(self.cur)).tr.send(msg)
+            if method == 'notifications/cancelled' and (h := self.inflight.get(msg['params'].get('requestId'))) is not None:
+                await (await self.session(h)).tr.send(msg)
             return None
         if method == 'ping': return jresp(id, {})
         if method == 'tools/list': return jresp(id, dict(tools=await self.tools()))
@@ -86,16 +87,18 @@ async def dispatch(self:Router, msg, requester=None):
             fired = scan(args.get('code', '')) if msg['params']['name'] == 'exec' else []
             if blocks := [r.note for r in fired if r.block]:
                 return jresp(id, dict(isError=True, content=[dict(type='text', text=' '.join(blocks)+' (If the block seems wrong here, tell your user.)')]))
-            has_host = 'host' in args
+            has_host,agent = 'host' in args, args.get('agent')
             host = args.pop('host', '') or ''
-            h = host if has_host else self.cur
+            h = host if has_host else self.cur.setdefault(agent, self.cur.get(None, ''))
             s = await self.session(h)
-            if has_host and msg['params']['name'] in ('use_kernel', 'create'): self.cur = host
+            if has_host and msg['params']['name'] in ('use_kernel', 'create'): self.cur[agent] = host
+            self.inflight[id] = h
             try: res = await s.tr.send(msg)
             except httpx.HTTPStatusError as e:
                 if e.response.status_code != 404: raise
                 del self.sessions[h]
                 res = await (await self.session(h)).tr.send(msg)
+            finally: self.inflight.pop(id, None)
             if 'result' in res:
                 content = res['result']['content'] = _cap_images(res['result']['content'])
                 if fired and not self.quiet: content.insert(0, dict(type='text', text=''.join(f'<note>\n{r.note}\n</note>\n' for r in fired)))

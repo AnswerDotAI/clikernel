@@ -76,11 +76,10 @@ def startup_src(cfgdir=None):
     return '\n'.join(parts)
 
 def session_defaults(cfgdir=None, quiet=False, local=True):
-    "Return startup and quiet settings for rustygate initialization. Local sessions also include cwd and env."
+    "Return startup and quiet settings for rustygate initialization. Local sessions also include cwd and env; named hosts, the Claude Code session id."
     d = dict(startup=startup_src(cfgdir), quiet=quiet)
-    if local:
-        d['cwd'] = os.getcwd()
-        d['env'] = dict(os.environ)
+    if local: d.update(cwd=os.getcwd(), env=dict(os.environ))
+    elif sid := os.environ.get('CLAUDE_CODE_SESSION_ID'): d['env'] = dict(CLAUDE_CODE_SESSION_ID=sid)
     return d
 
 # %% ../nbs/00_core.ipynb #10ed59fc
