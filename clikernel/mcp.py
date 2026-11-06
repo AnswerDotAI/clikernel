@@ -6,7 +6,7 @@ Each host has a separate gateway session. Calls without an explicit `host` go to
 
 Before forwarding `exec`, the router checks the cell against `clikernel.rules`. Most rules add a note to the reply. Two rules block the cell, which then never reaches a gateway.
 
-`main` runs the router and closes its gateway sessions on exit. Closing a session sends an HTTP DELETE. The gateway then stops the kernels that session created with autoclose. If the router started a child gateway, it stops that process too.
+`main` closes its gateway sessions on EOF, SIGTERM, or an exception. Closing a session sends an HTTP DELETE. The gateway then stops the kernels that session created with autoclose. If the router started a child gateway, it stops that process too.
 
 Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
 
@@ -16,7 +16,7 @@ Docs: https://AnswerDotAI.github.io/clikernel/mcp.html.md"""
 __all__ = ['HOST_PARAM', 'HOSTED', 'Router', 'main', 'agent_input', 'hook']
 
 # %% ../nbs/01_mcp.ipynb #28c42902
-import asyncio, httpx, json
+import asyncio, httpx, json, signal
 from fastcore.utils import *
 from fastcore.script import call_parse, store_true
 from mcpmini.core import serve_stdio, jresp, jerr
@@ -125,6 +125,8 @@ def main(
     "Run `clikernel-mcp` as a stdio server."
     async def _main():
         router = Router(cfgdir, quiet=quiet)
+        loop,task = asyncio.get_running_loop(),asyncio.current_task()
+        signal.signal(signal.SIGTERM, lambda *_: loop.call_soon_threadsafe(task.cancel))
         try: await serve_stdio(router)
         finally: await router.aclose()
     asyncio.run(_main())
