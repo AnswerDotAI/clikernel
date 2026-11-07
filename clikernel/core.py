@@ -54,10 +54,9 @@ finally: del __file__'''
 
 # %% ../nbs/00_core.ipynb #b0dd40c1
 def _python_display(shell):
-    "Display top-level expressions and preserve full result metadata."
+    "Set display defaults for Python kernels."
     import ast
-    from ipymini.term.display import enable_full_metadata
-    enable_full_metadata(shell.display_formatter)
+    import ipymini.term.display  # chkstyle: ignore
     run = shell.run_ast_nodes
     async def run_ast_nodes(nodelist, cell_name, interactivity='last_expr', **kwargs):
         if interactivity != 'all': return await run(nodelist, cell_name, interactivity, **kwargs)
