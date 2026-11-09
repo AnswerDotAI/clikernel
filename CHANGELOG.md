@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.19
+
+### New Features
+
+- Use ipymini generic display defaults via module import in Python kernels instead of `enable_full_metadata` ([#62](https://github.com/AnswerDotAI/clikernel/issues/62))
+- Handle SIGTERM in clikernel-mcp by cancelling the serve task so gateway sessions close and autoclose kernels are stopped ([#61](https://github.com/AnswerDotAI/clikernel/issues/61))
+
+
 ## 0.2.18
 
 ### New Features
