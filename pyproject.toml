@@ -43,6 +43,7 @@ Documentation = "https://AnswerDotAI.github.io/clikernel/"
 clikernel = "clikernel.cli:main"
 clikernel-mcp = "clikernel.mcp:main"
 clikernel-hook = "clikernel.mcp:hook"
+solveit-login = "clikernel.login:main"
 
 [project.entry-points.nbdev]
 clikernel = "clikernel._modidx:d"

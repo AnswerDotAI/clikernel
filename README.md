@@ -51,10 +51,11 @@ Two optional files in `$XDG_CONFIG_HOME/clikernel/` configure the router, usuall
 
 ``` toml
 [gateways.solveit]
-url = "https://solveit.example.com/gate"
-token_env = "SOLVEIT_TOKEN"
-verify = false   # optional: accept a self-signed certificate
+url = "https://<instance-host>/rusty"
+token_file = "~/.config/solveit/session"
 ```
+
+Run `solveit-login` to sign in through your browser and save that session file with mode `0600`. Restart the client after signing in again. Use the instance URL from your browser with `/rusty` appended. For other gateways, choose one of `token`, `token_env` or `token_file`; `verify = false` accepts a self-signed certificate. See [Solveit login](https://AnswerDotAI.github.io/clikernel/login.html) for login options.
 
 ## The stream protocol
 

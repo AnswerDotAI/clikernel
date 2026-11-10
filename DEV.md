@@ -27,7 +27,7 @@ Lifecycle is the gateway's rule, applied at session end. Clikernel sends HTTP DE
 - **Ownership decides gateway fate.** A found gateway is somebody's: never stopped, kernels as found. An owned child is conversation-scoped: always stopped. No conditional cleanup, no port sharing (the child takes a free port, invisible to other conversations).
 - **"kernel", not "session".** "Session" already means two things in Jupyter (the REST doc↔kernel binding, and the wire-protocol client id that reply routing uses). Models also have exactly the right priors about "kernel".
 - **No stdin over MCP.** Rustygate executes with `allow_stdin=false`; code that prompts gets a kernel error rather than a hung call. The elicitation machinery this replaced (v2.0) is gone.
-- **Secrets stay out of tool arguments.** `gateways.toml` maps gateway names to `url` plus `token` or `token_env`; the default local gateway needs neither.
+- **Secrets stay out of tool arguments.** `gateways.toml` maps gateway names to `url` plus `token`, `token_env` or `token_file`; the default local gateway needs neither.
 - **Per-conversation process = conversation scoping for free.** The stdio exit is the end-of-conversation signal HTTP lacks: it triggers the DELETEs and the child stop.
 
 ## Startup source

@@ -31,7 +31,7 @@ def cfg_dir():
     return xdg_config_home()/'clikernel'
 
 def gateways(cfgdir=None):
-    "Read named gateways as `{name: {url, token | token_env, verify}}` from `gateways.toml`."
+    "Read named gateways as `{name: {url, token | token_env | token_file, verify}}` from `gateways.toml`."
     p = (Path(cfgdir) if cfgdir else cfg_dir())/'gateways.toml'
     return tomllib.loads(p.read_text()).get('gateways', {}) if p.exists() else {}
 
@@ -42,8 +42,11 @@ def resolve(host='', cfgdir=None):
     cfgdir = Path(cfgdir) if cfgdir else cfg_dir()
     g = gateways(cfgdir).get(host)
     if g is None: raise ValueError(f"unknown gateway {host!r}: not a URL, and not in {cfgdir/'gateways.toml'}")
-    return g['url'], g.get('token') or os.environ.get(g.get('token_env','')) or None, g.get('verify', True)
-
+    if sum(k in g for k in ('token', 'token_env', 'token_file')) > 1:
+        raise ValueError(f"gateway {host!r}: choose one of token, token_env or token_file")
+    token = g.get('token') or os.environ.get(g.get('token_env', ''))
+    if 'token_file' in g: token = Path(g['token_file']).expanduser().read_text().strip()
+    return g['url'], token or None, g.get('verify', True)
 
 # %% ../nbs/00_core.ipynb #0d846754
 def _with_file(src, path):
