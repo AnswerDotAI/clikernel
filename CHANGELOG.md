@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.20
+
+### New Features
+
+- Add solveit-login command for browser sign-in and `token_file` gateway credential source, rejecting configs with multiple token sources ([#63](https://github.com/AnswerDotAI/clikernel/issues/63))
+
+
 ## 0.2.19
 
 ### New Features
