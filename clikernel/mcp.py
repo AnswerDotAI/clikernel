@@ -90,6 +90,7 @@ async def dispatch(self:Router, msg, requester=None):
             has_host,agent = 'host' in args, args.get('agent')
             host = args.pop('host', '') or ''
             h = host if has_host else self.cur.setdefault(agent, self.cur.get(None, ''))
+            if h: args.pop('cwd', None)
             s = await self.session(h)
             if has_host and msg['params']['name'] in ('use_kernel', 'create'): self.cur[agent] = host
             self.inflight[id] = h
@@ -140,6 +141,21 @@ def agent_input(
     if aid := event.get('agent_id'): return event['tool_input'] | dict(agent=aid)
 
 # %% ../nbs/01_mcp.ipynb #105e6780
+def _hook_response(event:dict):
+    if 'toolCall' in event:
+        tc = event['toolCall']
+        args, cid = tc.get('args') or {}, event.get('conversationId')
+        cwd = event.get('cwd') or first(event.get('workspacePaths') or ()) or ''
+        extra = {k: v for k, v in dict(agent=cid, cwd=cwd).items() if v}
+        if tc.get('name') == 'call_mcp_tool':
+            srv = args.get('ServerName') or ''
+            if extra and (srv == 'clikernel' or srv.endswith('_clikernel')):
+                return dict(decision='allow', overwrite=dict(Arguments=(args.get('Arguments') or {}) | extra))
+        elif extra: return dict(decision='allow', overwrite=extra)
+        return dict(decision='ask')
+    if upd := agent_input(event):
+        return dict(hookSpecificOutput=dict(hookEventName='PreToolUse', updatedInput=upd))
+
 def hook():
-    "Run `clikernel-hook`: read a `PreToolUse` event on stdin, and print the `updatedInput` that gives a subagent its own kernel."
-    if upd := agent_input(json.load(sys.stdin)): print(json.dumps(dict(hookSpecificOutput=dict(hookEventName='PreToolUse', updatedInput=upd))))
+    "Run `clikernel-hook`: read a `PreToolUse` event on stdin and print the hook response giving each caller its own kernel."
+    if resp := _hook_response(json.load(sys.stdin)): print(json.dumps(resp))
