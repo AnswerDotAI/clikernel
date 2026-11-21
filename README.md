@@ -42,6 +42,8 @@ In Claude Code, subagents share the current kernel unless `clikernel-hook` is re
 
 The router checks each `exec` cell against built-in rules for mistakes agents often make with this toolkit. Most rules add a note to the reply, and `--quiet` leaves the notes out. Two rules always block the cell: shell access through `subprocess`, [`os.system`](https://docs.python.org/3/library/os.html#os.system) or [`os.popen`](https://docs.python.org/3/library/os.html#os.popen), and changes to `sys.path`.
 
+The router caps text replies to `--maxout` UTF-8 bytes (default 40,000; pass `0` to disable). When a reply exceeds that limit, the router saves the full output to a temporary file, returns the first chunk with the file path and remaining size, and serves subsequent chunks when you run `exec(code="%cont")` (or `exec(code="%cont <id>")` when several calls overflow in parallel).
+
 ## Configuration
 
 Two optional files in `$XDG_CONFIG_HOME/clikernel/` configure the router, usually under `~/.config/clikernel/`, or under the directory `clikernel-mcp --cfgdir` names:

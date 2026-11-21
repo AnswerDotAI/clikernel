@@ -7,12 +7,13 @@ r"""Use `clikernel` MCP as the default persistent Python workspace for file/note
 - `restart`: reruns startup only in kernels this conversation created; redo the rest; `interrupt` keeps state
 - `host=` names: `~/.config/clikernel/gateways.toml`; later `exec` stays on that host
 - bpl kernel: gateway environment needs basedpl
+- replies >`--maxout` bytes: first chunk inline + full-output temp file; `%cont` or `%cont <id>` in `exec` for next chunk; huge: `rg`/`open_doc` on temp file
 
 # Python
 
 - magics work, `%%bash` too; `%cd` (expands `~`), not `os.chdir`
 - top-level expressions display, not those in blocks (clikernel default; startup can override)
-- all output reaches conversation: `len(v)` first
+- outputs reach conversation up to `--maxout`: `len(v)` first
 - imports: once; `NameError` for your name: kernel restarted or attached: redo setup
 - after `nbdev-export` or module edit: `importlib.reload`, re-import held names (`from x import y` keeps old object); `@patch` refreshes; restart only if a held instance's class changed
 - loaded behavior: call it, never `inspect.getsource`    /reads disk

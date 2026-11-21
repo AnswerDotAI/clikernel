@@ -7,7 +7,7 @@ The README documents what clikernel does; this file records the architecture, th
 Two processes, one hosting and one routing:
 
 - **A gateway hosts the kernels and the MCP tool surface** ([rustygate](https://github.com/AnswerDotAI/rustygate); the `rustygate` binary; default `127.0.0.1:8787`). Kernels live in the gateway and persist as long as it does. Run one resident (launchd/systemd) when kernels should outlive conversations; nothing requires it.
-- **clikernel is a stdio MCP router** that an MCP host launches per conversation. `Router` forwards the harness's MCP to gateways over Streamable HTTP: one `Gateway` session per gateway, and a current one for each caller. It defines no tools — `tools/list` comes from the local gateway, with a `host` parameter (a `gateways.toml` name) patched onto `list_kernels`, `use_kernel`, and `create`, and `tools/call` forwarded verbatim, ids intact so cancellation notifications map through. There are two exceptions. `exec` must first pass the cell rules. The router also limits the images in each tool result (`_cap_images`). `use_kernel` and `create` carrying a `host` move the caller's current gateway; that caller's other calls follow it, and each cancellation goes to the gateway handling its request.
+- **clikernel is a stdio MCP router** that an MCP host launches per conversation. `Router` forwards the harness's MCP to gateways over Streamable HTTP: one `Gateway` session per gateway, and a current one for each caller. It defines no tools — `tools/list` comes from the local gateway, with a `host` parameter (a `gateways.toml` name) patched onto `list_kernels`, `use_kernel`, and `create`, and `tools/call` forwarded verbatim, ids intact so cancellation notifications map through. The router adds four behaviors around forwarding. An `exec` cell containing `%cont` (or `%cont <id>`) returns the next chunk of an overflowed reply locally without contacting a gateway. All other `exec` cells must first pass the cell rules. Every tool result has its images limited (`_cap_images`) and its text capped to `--maxout` UTF-8 bytes. `use_kernel` and `create` carrying a `host` move the caller's current gateway; that caller's other calls follow it, and each cancellation goes to the gateway handling its request.
 
 What the router supplies per session, as the `rustygate` extension of MCP `initialize`:
 
@@ -43,6 +43,16 @@ The rules exist because we measured the difference against prose instructions. S
 The router can't see which kernel will run a cell. So a rule may only match Python forms that no other kernel language produces. IPython's `!` escape fails that test: BPL's `!5` (factorial) transforms into the same `get_ipython().system(...)` call. That is why `!` lines aren't blocked, and neither is Luau's `io.popen`. For the same reason, rules read only the cell's text. A rule that consulted installed packages would check the router's environment, not the kernel's.
 
 The stream CLI talks to gateways directly, so its cells get no rule checks.
+
+## Output capping
+
+MCP hosts enforce different response limits. Antigravity spills MCP replies above 10,240 UTF-8 bytes to disk with no inline preview, and its tool wrapper truncates replies when text plus its 78-byte timestamp header exceeds 10,240 bytes. Capping text in `Router` lets each host pass a matching `--maxout` byte budget (default 40,000; `0` disables capping) without changing rustygate or adding an MCP tool.
+
+When a tool reply's text exceeds `--maxout` UTF-8 bytes after counting any prepended cell-rule `<note>`, `Router` writes the full gateway output to a file in a lazy per-router temporary directory that `Router.aclose()` removes. `Router` cuts each chunk at the last newline within roughly 256 bytes of the budget when one exists, or at a UTF-8 character boundary otherwise, and appends a footer naming the temporary file, total and remaining sizes, and `%cont` (with an optional per-agent ID).
+
+`Router.dispatch` intercepts `%cont` and `%cont <id>` in `exec` before cell rules and before gateway forwarding, and ignores `%%cont`. Continuation state is keyed by `agent` with sequential IDs per caller so subagents and parallel tool calls on a shared `clikernel-mcp` process do not overwrite each other.
+
+When rustygate wraps a `full=True` output (such as `doc()`) in `𝍁…𝍁`, `Router` strips the outer markers before writing the temporary file and wraps every returned chunk as `𝍁<chunk><footer_text>𝍁`. The closing `𝍁` sits after the footer because `llmsurgery.compact.compact_result` checks the first and last characters. Both markers (8 UTF-8 bytes) count toward `--maxout`.
 
 ## Testing
 
