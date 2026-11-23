@@ -5,7 +5,7 @@
 
 `clikernel` gives LLM agents persistent kernel sessions over MCP or a plain stream protocol. Imports, variables, and results remain available between calls. Agents can create kernels or attach to existing ones, including a user’s live solveit kernel.
 
-[rustygate](https://github.com/AnswerDotAI/rustygate) hosts the kernels. Clikernel routes requests to local or named remote gateways and supplies startup code to Python kernels.
+[jupygate](https://github.com/AnswerDotAI/jupygate) hosts the kernels. Clikernel routes requests to local or named remote gateways and supplies startup code to Python kernels.
 
 New kernels close with their creating conversation by default. Attaching to an existing kernel does not claim ownership. Use `autoclose=false` on a persistent gateway to keep a new kernel for later conversations. See [core](https://AnswerDotAI.github.io/clikernel/core.html) for configuration and lifecycle details.
 
@@ -15,10 +15,10 @@ New kernels close with their creating conversation by default. Attaching to an e
 pip install clikernel
 ```
 
-This installs rustygate and ipymini. No service setup is required for a conversation-local kernel: clikernel starts a private gateway if it cannot find one. To retain kernels across conversations, run a resident gateway, for example through launchd or systemd:
+This installs jupygate and ipymini. No service setup is required for a conversation-local kernel: clikernel starts a private gateway if it cannot find one. To retain kernels across conversations, run a resident gateway, for example through launchd or systemd:
 
 ``` sh
-rustygate --port 8787
+jupygate --port 8787
 ```
 
 ## Use with an MCP host
@@ -36,7 +36,7 @@ create(kernel="py")
 exec(code="6*7")
 ```
 
-Use `kernel="luau"` for bundled Luau, or `kernel="bpl"` for BPL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. In the main conversation, `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
+Use `kernel="bpl"` for BPL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. In the main conversation, `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
 
 In Claude Code, subagents share the current kernel unless `clikernel-hook` is registered as a `PreToolUse` hook. With the hook, each subagent’s first `exec` creates a kernel of its own. See [Subagent kernels](https://AnswerDotAI.github.io/clikernel/mcp.html#subagent-kernels) for the settings entry.
 

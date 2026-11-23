@@ -17,10 +17,9 @@ classifiers = [
 
 dependencies = [
   "fastcore>=2.2.2",
-  "jupyasyncclient>=0.2.10",
-  "jupywire>=0.1.9",
+  "jupyasyncclient>=0.2.32",
   "mcpmini>=0.0.5",
-  "rustygate>=0.1.27",
+  "jupygate>=0.1.0",
   "ipymini>=0.1.28",
   "httpx",
   "ipython",

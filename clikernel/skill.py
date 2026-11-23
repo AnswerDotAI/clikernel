@@ -2,9 +2,9 @@
 r"""Use `clikernel` MCP as the default persistent Python workspace for file/notebook reads and edits, exploration, library checks, data reshaping and debugging. Imports and variables carry across calls. Read before writing, running or debugging Python with `clikernel` connected.
 
 - prefer: clikernel over one-off scripts (`python -c`, heredocs); pyskills over shell (rgapi `rg` `fd` `ls`; ghapi: GitHub, git); shell: project tests, builds, non-Python tools
-- outlive conversation: `create(kernel="py", dlgname="work", autoclose=false)`, tell user its id; reply shows gateway started by this conversation: say so    /kernel needs a lasting gateway
+- outlive conversation: `create(kernel="py", autoclose=false)`, tell user its id; reply shows gateway started by this conversation: say so    /kernel needs a lasting gateway
 - earlier or user's solveit kernel: `list_kernels` → `use_kernel(id)`
-- `restart`: reruns startup only in kernels this conversation created; redo the rest; `interrupt` keeps state
+- `restart`: reruns that kernel's startup; redo interactive setup; `interrupt` keeps state
 - `host=` names: `~/.config/clikernel/gateways.toml`; later `exec` stays on that host
 - bpl kernel: gateway environment needs basedpl
 - replies >`--maxout` bytes: first chunk inline + full-output temp file; `%cont` or `%cont <id>` in `exec` for next chunk; huge: `rg`/`open_doc` on temp file

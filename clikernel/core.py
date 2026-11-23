@@ -1,12 +1,12 @@
-"""Gateway naming, startup delivery, and MCP sessions on rustygate gateways
+"""Gateway naming, startup delivery, and MCP sessions on jupygate gateways
 
-[Rustygate](https://github.com/AnswerDotAI/rustygate) hosts kernels and serves MCP requests at `POST /mcp`. Clikernel runs alongside it for the duration of a conversation. It routes the LLM client's stdio MCP requests to gateways.
+[Jupygate](https://github.com/AnswerDotAI/jupygate) hosts kernels and serves MCP requests at `POST /mcp`. Clikernel runs alongside it for the duration of a conversation. It routes the LLM client's stdio MCP requests to gateways.
 
 This module connects to those gateways. `gateways.toml` gives them names. `session_defaults` supplies kernel startup code and, for a local gateway, the conversation's working directory and environment. It sends `startup.py` as source, so it can run on another machine.
 
 `Gateway` represents one MCP session on one gateway. `default_gateway` connects to the local gateway or starts a child process if it cannot connect. The caller must stop any returned child. The MCP router does this when the conversation ends.
 
-Rustygate tracks the session's current kernel and which kernels it created. Ending a session stops its autoclose kernels. It leaves other kernels running. Stopping an owned gateway process stops all kernels in that process.
+Jupygate tracks the session's current kernel and which kernels it created. Ending a session stops its autoclose kernels. It leaves other kernels running. Stopping an owned gateway process stops all kernels in that process.
 
 Docs: https://AnswerDotAI.github.io/clikernel/core.html.md"""
 
@@ -17,10 +17,11 @@ __all__ = ['DEFAULT_URL', 'cfg_dir', 'gateways', 'resolve', 'startup_src', 'sess
 
 # %% ../nbs/00_core.ipynb #2b3b7f4a
 import os, inspect, tomllib, httpx
+from contextlib import suppress
 from fastcore.utils import *
 from fastcore.xdg import xdg_config_home
 from mcpmini.core import HTTPTransport, jreq
-from rustygate.tools import start_gateway
+from jupyasyncclient import start_gateway
 from . import __version__
 
 # %% ../nbs/00_core.ipynb #596419b8
@@ -37,7 +38,8 @@ def gateways(cfgdir=None):
 
 def resolve(host='', cfgdir=None):
     "Resolve an empty host, URL, or configured gateway name to `(url, token, verify)`."
-    if not host: return os.environ.get('CLIKERNEL_HOST', DEFAULT_URL), os.environ.get('CLIKERNEL_TOKEN'), True
+    host = host or os.environ.get('CLIKERNEL_HOST') or ''
+    if not host: return DEFAULT_URL, os.environ.get('CLIKERNEL_TOKEN'), True
     if '://' in host: return host, os.environ.get('CLIKERNEL_TOKEN'), True
     cfgdir = Path(cfgdir) if cfgdir else cfg_dir()
     g = gateways(cfgdir).get(host)
@@ -78,7 +80,7 @@ def startup_src(cfgdir=None):
     return '\n'.join(parts)
 
 def session_defaults(cfgdir=None, quiet=False, local=True):
-    "Return startup and quiet settings for rustygate initialization. Local sessions also include cwd and env; named hosts, the Claude Code session id."
+    "Return startup and quiet settings for jupygate initialization. Local sessions also include cwd and env; named hosts, the Claude Code session id."
     d = dict(startup=startup_src(cfgdir), quiet=quiet)
     if local: d.update(cwd=os.getcwd(), env=dict(os.environ))
     elif sid := os.environ.get('CLAUDE_CODE_SESSION_ID'): d['env'] = dict(CLAUDE_CODE_SESSION_ID=sid)
@@ -86,7 +88,7 @@ def session_defaults(cfgdir=None, quiet=False, local=True):
 
 # %% ../nbs/00_core.ipynb #10ed59fc
 class Gateway:
-    "Open an MCP session on rustygate, call its tools, and end the session with DELETE."
+    "Open an MCP session on jupygate, call its tools, and end the session with DELETE."
     def __init__(
         self,
         url,          # The gateway base URL, e.g. 'http://127.0.0.1:8787'
@@ -105,13 +107,19 @@ class Gateway:
         return r['result']
 
     async def initialize(self, defaults=None):
-        "Open the MCP session with `defaults` in the `rustygate` extension. Return self."
+        "Open the MCP session with `defaults` in the `jupygate` extension. Return self."
         await self.tr.start()
-        self.info = await self.rpc('initialize', protocolVersion='2025-11-25', capabilities={},
-            clientInfo=dict(name='clikernel', version=__version__), rustygate=defaults or {})
-        self.tr.proto = self.info['protocolVersion']
-        await self.tr.send(jreq('notifications/initialized'))
-        return self
+        try:
+            self.info = await self.rpc('initialize', protocolVersion='2025-11-25', capabilities={},
+                clientInfo=dict(name='clikernel', version=__version__), jupygate=defaults or {})
+            if defaults and not self.info.get('jupygate'):
+                raise RuntimeError(f'gateway at {self.url} did not acknowledge jupygate session defaults; upgrade the gateway')
+            self.tr.proto = self.info['protocolVersion']
+            await self.tr.send(jreq('notifications/initialized'))
+            return self
+        except BaseException:
+            with suppress(Exception): await self.aclose()
+            raise
 
 # %% ../nbs/00_core.ipynb #2dd701f9
 @patch
@@ -138,11 +146,17 @@ async def aclose(self:Gateway):
 async def default_gateway(
     cfgdir=None,  # Config dir for `session_defaults` (the standard one if None)
     quiet=False,  # Keep startup output out of replies?
+    url=DEFAULT_URL,  # Local gateway URL to try before spawning a child (ignored when `CLIKERNEL_HOST` is set)
 ):
     "Return an initialized `Gateway` and its new child process, or None if it reused a gateway. The caller must stop any child."
-    url, token, verify = resolve('', cfgdir)
-    d = session_defaults(cfgdir, quiet)
-    try: return await Gateway(url, token, verify).initialize(d), None
+    if host := os.environ.get('CLIKERNEL_HOST'):
+        u, token, verify = resolve(host, cfgdir)
+        return await Gateway(u, token, verify).initialize(session_defaults(cfgdir, quiet, local=False)), None
+    d = session_defaults(cfgdir, quiet, local=True)
+    try: return await Gateway(url, os.environ.get('CLIKERNEL_TOKEN'), True).initialize(d), None
     except httpx.ConnectError:
         child = start_gateway()
-        return await Gateway(child.url).initialize(d), child
+        try: return await Gateway(child.url).initialize(d), child
+        except BaseException:
+            child.stop()
+            raise

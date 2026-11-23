@@ -1,6 +1,6 @@
-"""Route stdio MCP requests to rustygate gateways
+"""Route stdio MCP requests to jupygate gateways
 
-Claude Code starts `clikernel-mcp` for each conversation. Its `Router` accepts MCP messages over stdio and sends tool calls to rustygate gateways. Rustygate implements the tools. The router gets their schemas from the local gateway and adds `host` to `list_kernels`, `use_kernel`, and `create`.
+Claude Code starts `clikernel-mcp` for each conversation. Its `Router` accepts MCP messages over stdio and sends tool calls to jupygate gateways. Jupygate implements the tools. The router gets their schemas from the local gateway and adds `host` to `list_kernels`, `use_kernel`, and `create`.
 
 Each host has a separate gateway session. Calls without an explicit `host` go to their caller's current host. The router keeps one for the main conversation and one for each subagent that `clikernel-hook` names with `agent`; a subagent starts on the main conversation's current host. The router removes `host` before forwarding a call but preserves the JSON-RPC request id. Cancellation notifications also retain their original ids.
 
@@ -20,7 +20,7 @@ import asyncio, httpx, json, re, signal, tempfile
 from fastcore.utils import *
 from fastcore.script import call_parse, store_true
 from mcpmini.core import serve_stdio, jresp, jerr
-from .core import Gateway, default_gateway, resolve, session_defaults
+from .core import DEFAULT_URL, Gateway, default_gateway, resolve, session_defaults
 from .rules import scan
 from . import __version__
 
@@ -31,14 +31,15 @@ MAXOUT = 40_000
 _CONT_RE = re.compile(r'^%cont(?:\s+(\S+))?$')
 
 class Router:
-    "Route stdio MCP to rustygate with one session per host and a current host for each caller."
+    "Route stdio MCP to jupygate with one session per host and a current host for each caller."
     def __init__(
         self,
         cfgdir=None,  # Config dir for `session_defaults` and `gateways.toml` (the standard one if None)
         quiet=False,  # Keep startup output and rule notes out of replies?
         maxout=MAXOUT,  # Max UTF-8 bytes per text reply (0 or None disables capping)
+        url=DEFAULT_URL,  # Local gateway URL to try before spawning a child (ignored when `CLIKERNEL_HOST` is set)
     ):
-        self.cfgdir,self.quiet,self.maxout = cfgdir,quiet,maxout
+        self.cfgdir,self.quiet,self.maxout,self.url = cfgdir,quiet,maxout,url
         self.sessions,self.cur,self.inflight,self.child = {},{},{},None
         self._tmpdir,self._out_seq,self._conts,self._last = None,0,{},{}
 
@@ -48,16 +49,18 @@ class Router:
             if host:
                 url, token, verify = resolve(host, self.cfgdir)
                 self.sessions[host] = await Gateway(url, token, verify).initialize(session_defaults(self.cfgdir, self.quiet, local=False))
-            else: self.sessions[host], self.child = await default_gateway(self.cfgdir, self.quiet)
+            else: self.sessions[host], self.child = await default_gateway(self.cfgdir, self.quiet, url=self.url)
         return self.sessions[host]
 
 # %% ../nbs/01_mcp.ipynb #79da6a3e
 @patch
 async def tools(self:Router):
-    "Return the local gateway's tools with `host` added to `list_kernels`, `use_kernel`, and `create`."
+    "Return the local gateway's tools with `host` added to `list_kernels`, `use_kernel`, and `create`, and `create.kernel` unconstrained for remote hosts."
     ts = await (await self.session()).tools()
     for t in ts:
-        if t['name'] in HOSTED: t['inputSchema'].setdefault('properties', {})['host'] = dict(HOST_PARAM)
+        props = t['inputSchema'].setdefault('properties', {})
+        if t['name'] in HOSTED: props['host'] = dict(HOST_PARAM)
+        if t['name'] == 'create' and 'kernel' in props: props['kernel'].pop('enum', None)
     return ts
 
 # %% ../nbs/01_mcp.ipynb #6da913bf
@@ -168,9 +171,8 @@ async def dispatch(self:Router, msg, requester=None):
             has_host = 'host' in args
             host = args.pop('host', '') or ''
             h = host if has_host else self.cur.setdefault(agent, self.cur.get(None, ''))
-            if h: args.pop('cwd', None)
+            if h or os.environ.get('CLIKERNEL_HOST'): args.pop('cwd', None)
             s = await self.session(h)
-            if has_host and msg['params']['name'] in ('use_kernel', 'create'): self.cur[agent] = host
             self.inflight[id] = h
             try: res = await s.tr.send(msg)
             except httpx.HTTPStatusError as e:
@@ -179,6 +181,8 @@ async def dispatch(self:Router, msg, requester=None):
                 res = await (await self.session(h)).tr.send(msg)
             finally: self.inflight.pop(id, None)
             if 'result' in res:
+                if has_host and msg['params']['name'] in ('use_kernel', 'create') and not res['result'].get('isError'):
+                    self.cur[agent] = host
                 content = _cap_images(res['result']['content'])
                 note = ''.join(f'<note>\n{r.note}\n</note>\n' for r in fired) if fired and not self.quiet else ''
                 res['result']['content'] = self._cap_text(content, agent, note=note)
