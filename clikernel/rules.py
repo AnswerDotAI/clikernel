@@ -149,7 +149,7 @@ RULES = [
     Rule('s_long', 'Use a c command (%%exhash <addr> c) for an s-replacement over 120 chars, except when the line is much longer still.', _s_long),
     Rule('postproc', "Show tooling results bare; narrow with the tool's own parameters.", _postproc),
     Rule('run_magic', 'Invoke magics directly with % syntax.', _run_magic, raw=True),
-    Rule('shell_escape', 'Run shell commands with the Bash tool.', _shell_escape, block=True),
+    Rule('shell_escape', 'Run shell commands with your shell tool (run_command in Antigravity, Bash in Claude Code).', _shell_escape, block=True),
     Rule('sys_path', 'Never modify sys.path; stop and ask the user.', _sys_path, block=True)]
 
 
