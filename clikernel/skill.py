@@ -6,7 +6,6 @@ r"""Use `clikernel` MCP as the default persistent Python workspace for file/note
 - earlier or user's solveit kernel: `list_kernels` → `use_kernel(id)`
 - `restart`: reruns that kernel's startup; redo interactive setup; `interrupt` keeps state
 - `host=` names: `~/.config/clikernel/gateways.toml`; later `exec` stays on that host
-- bpl kernel: gateway environment needs basedpl
 - replies >`--maxout` bytes: first chunk inline + full-output temp file; `%cont` or `%cont <id>` in `exec` for next chunk; huge: `rg`/`open_doc` on temp file
 
 # Python

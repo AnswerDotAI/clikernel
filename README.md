@@ -36,7 +36,7 @@ create(kernel="py")
 exec(code="6*7")
 ```
 
-Use `kernel="bpl"` for BPL when `basedpl` is installed in the gateway’s environment. `create` accepts any kernelspec the gateway finds. In the main conversation, `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways, dialog bindings, and other tools.
+`create` accepts any kernelspec the gateway finds. In the main conversation, `exec` never creates or switches kernels. See [MCP](https://AnswerDotAI.github.io/clikernel/mcp.html) for named gateways and other tools.
 
 In Claude Code, subagents share the current kernel unless `clikernel-hook` is registered as a `PreToolUse` hook. With the hook, each subagent’s first `exec` creates a kernel of its own. See [Subagent kernels](https://AnswerDotAI.github.io/clikernel/mcp.html#subagent-kernels) for the settings entry.
 
