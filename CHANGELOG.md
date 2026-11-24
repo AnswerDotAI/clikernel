@@ -2,6 +2,16 @@
 
 <!-- do not remove -->
 
+## 0.2.21
+
+### New Features
+
+- Route subagents to per-(host, agent) gateway sessions with lazy kernel creation and idle session reaping ([#68](https://github.com/AnswerDotAI/clikernel/issues/68))
+- Switch from rustygate to jupygate, remove stream module, and harden `CLIKERNEL_HOST` and remote host routing ([#66](https://github.com/AnswerDotAI/clikernel/issues/66))
+- Add --maxout UTF-8 reply capping in Router with temp-file overflow and %cont paging ([#65](https://github.com/AnswerDotAI/clikernel/issues/65))
+- Add Antigravity support to clikernel-hook, injecting per-conversation agent and cwd, and drop cwd when forwarding to remote hosts ([#64](https://github.com/AnswerDotAI/clikernel/issues/64))
+
+
 ## 0.2.20
 
 ### New Features
