@@ -7,4 +7,6 @@ Modules:
 - `clikernel.mcp`: Route stdio MCP requests to jupygate gateways
 - `clikernel.skill`: Use `clikernel` MCP as the default persistent Python workspace for file/notebook reads and edits, exploration, library checks, data reshaping and debugging. Imports and variables carry across calls. Read before writing, running or debugging Python with `clikernel` connected."""
 
-__version__ = "0.2.21"
+__version__ = "0.2.22"
+
+
