@@ -48,6 +48,7 @@ solveit-login = "clikernel.login:main"
 clikernel = "clikernel._modidx:d"
 
 [tool.nbdev]
+to_meta = ["export"]
 
 [tool.setuptools.dynamic]
 version = { attr = "clikernel.__version__" }

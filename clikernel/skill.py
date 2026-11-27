@@ -1,4 +1,3 @@
-# NB: this file is designed for an LLM reader, not a human. Add it to your LLM's context and ask it to explain.
 r"""Use `clikernel` MCP as the default persistent Python workspace for file/notebook reads and edits, exploration, library checks, data reshaping and debugging. Imports and variables carry across calls. Read before writing, running or debugging Python with `clikernel` connected.
 
 - prefer: clikernel over one-off scripts (`python -c`, heredocs); pyskills over shell (rgapi `rg` `fd` `ls`; ghapi: GitHub, git); shell: project tests, builds, non-Python tools
@@ -8,7 +7,7 @@ r"""Use `clikernel` MCP as the default persistent Python workspace for file/note
 - `host=` names: `~/.config/clikernel/gateways.toml`; later `exec` stays on that host
 - replies >`--maxout` bytes: first chunk inline + full-output temp file; `%cont` or `%cont <id>` in `exec` for next chunk; huge: `rg`/`open_doc` on temp file
 
-# Python
+### Python
 
 - magics work, `%%bash` too; `%cd` (expands `~`), not `os.chdir`
 - top-level expressions display, not those in blocks (clikernel default; startup can override)

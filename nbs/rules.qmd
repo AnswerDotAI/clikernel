@@ -1,0 +1,20 @@
+---
+title: Rules
+description: Static AST checks that catch common agent kernel mistakes before execution
+---
+
+```{python}
+#| echo: false
+import re
+from IPython.display import Markdown, display
+from nbdev.showdoc import show_doc
+import clikernel.rules as mod
+from clikernel.rules import Rule, scan, RULES
+
+body = re.sub(r'\n+Docs:\s*\S+\s*$', '', (mod.__doc__ or '').strip())
+if body: display(Markdown(body))
+for sym in (Rule, scan): display(show_doc(sym))
+rules_md = '### Built-in rules\n\n' + '\n'.join(
+    f'- `{r.name}` ({"blocking" if r.block else "advisory"}): {r.note}' for r in RULES)
+display(Markdown(rules_md))
+```
