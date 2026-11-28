@@ -11,6 +11,7 @@ Modules:
 - `clikernel.cli`: The stream-protocol frontend: the service on stdin/stdout for token-reading clients
 - `clikernel.core`: Gateway naming, startup delivery, and MCP sessions on jupygate gateways
 - `clikernel.mcp`: Route stdio MCP requests to jupygate gateways
+- `clikernel.rules`: Static AST checks that catch common agent kernel mistakes before execution
 - `clikernel.skill`: Use `clikernel` MCP as the default persistent Python workspace for file/notebook reads and edits, exploration, library checks, data reshaping and debugging. Imports and variables carry across calls. Read before writing, running or debugging Python with `clikernel` connected."""
 
 __version__ = "0.2.22"

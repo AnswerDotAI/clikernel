@@ -56,7 +56,7 @@ When jupygate wraps a `full=True` output (such as `doc()`) in `𝍁…𝍁`, `Ro
 
 ## Testing
 
-Notebooks are the tests (`nbdev-test`), except that the rules' parsing edge cases are pytest checks in `tests/test_rules.py`; demos spawn a jupygate on its own port via `jupyasyncclient.start_gateway`. `jupygate`, `jupyasyncclient`, and `mcpmini` are runtime dependencies — the router spawns `jupygate` via `jupyasyncclient.start_gateway`.
+Notebooks are the tests (`nbdev-test`); demos spawn a jupygate on its own port via `jupyasyncclient.start_gateway`. `jupygate`, `jupyasyncclient`, and `mcpmini` are runtime dependencies — the router spawns `jupygate` via `jupyasyncclient.start_gateway`.
 
 ## Next steps (deliberately not built)
 
